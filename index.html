@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta name="referrer" content="no-referrer">
 <title>Artemis II — Live Mission Dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
@@ -463,6 +466,8 @@ const telemSmooth={};
 function smoothTelem(id,target,speed=0.08){if(target==null||isNaN(target))return target;if(!(id in telemSmooth))telemSmooth[id]=target;telemSmooth[id]+=(target-telemSmooth[id])*speed;return telemSmooth[id]}
 
 // ─── FORMAT ───
+// HTML escape for API data injected into innerHTML
+function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function fmt(n,d=0){if(n==null||isNaN(n))return'--';return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function fmtC(n){if(n==null||isNaN(n))return'--';const a=Math.abs(n);if(a>=1e6)return(n/1e6).toFixed(1)+'M';if(a>=1e3)return(n/1e3).toFixed(1)+'K';return n.toFixed(1)}
 function formatMET(ms){if(ms<0)return'T- --:--:--';const s=Math.floor(ms/1000),d=Math.floor(s/86400),hr=Math.floor(s%86400/3600),mn=Math.floor(s%3600/60),sc=s%60;const p=n=>String(n).padStart(2,'0');return`T+ ${d}d ${p(hr)}:${p(mn)}:${p(sc)}`}
@@ -514,9 +519,9 @@ function updateUI(){
   }
   if(dsnData)updateDSN(dsnData);
 }
-function updateDSN(d){const c=document.getElementById('dsnDishes'),b=document.getElementById('dsnBadge');b.textContent=d.signalActive?'SIGNAL ACTIVE':'NO SIGNAL';b.style.background=d.signalActive?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';b.style.color=d.signalActive?'var(--green)':'var(--red)';if(!d.dishes?.length){c.innerHTML='<div style="color:var(--text-dim);font-size:12px">No dishes</div>';return}c.innerHTML=d.dishes.map(x=>'<div class="dsn-dish"><div class="dsn-icon">\u{1F4E1}</div><div class="dsn-info"><div class="dsn-name">'+x.dish+'</div><div class="dsn-station">'+x.stationName+' ('+x.station.toUpperCase()+')</div><div class="dsn-stats"><div class="dsn-stat">AZ <span class="val">'+x.azimuth+'\u00B0</span></div><div class="dsn-stat">EL <span class="val">'+x.elevation+'\u00B0</span></div><div class="dsn-stat">RTLT <span class="val">'+(x.rtltSeconds?.toFixed(2))+'s</span></div><div class="dsn-stat">\u2193 <span class="val">'+(x.downlinkRate/1e6).toFixed(1)+' Mbps</span></div></div></div><div class="dsn-signal">'+[1,2,3,4].map(i=>'<div class="signal-bar" style="height:'+(i*5+4)+'px;opacity:'+(x.downlinkActive?1:.2)+'"></div>').join('')+'</div></div>').join('')}
-function updateThrusters(t){const g=document.getElementById('thrusterGrid');let ac=0;g.innerHTML=Object.entries(t).map(([n,a])=>{if(a)ac++;return'<div class="thruster '+(a?'active':'inactive')+'" title="'+n+'">'+n+'</div>'}).join('');document.getElementById('thrusterCount').textContent=ac+' firing'}
-function updateSAW(a){document.getElementById('sawGrid').innerHTML=Object.entries(a).map(([n,v])=>'<div class="saw-item"><div class="saw-label">'+n.toUpperCase()+'</div><div class="saw-value">'+v.toFixed(1)+'\u00B0</div></div>').join('')}
+function updateDSN(d){var c=document.getElementById('dsnDishes'),b=document.getElementById('dsnBadge');b.textContent=d.signalActive?'SIGNAL ACTIVE':'NO SIGNAL';b.style.background=d.signalActive?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';b.style.color=d.signalActive?'var(--green)':'var(--red)';if(!d.dishes?.length){c.textContent='No active dishes';return}c.innerHTML=d.dishes.map(function(x){var dn=esc(x.dish),sn=esc(x.stationName),st=esc(x.station.toUpperCase()),az=esc(String(x.azimuth)),el=esc(String(x.elevation)),rt=esc(x.rtltSeconds?.toFixed(2)),dl=esc((x.downlinkRate/1e6).toFixed(1));return'<div class="dsn-dish"><div class="dsn-icon">\u{1F4E1}</div><div class="dsn-info"><div class="dsn-name">'+dn+'</div><div class="dsn-station">'+sn+' ('+st+')</div><div class="dsn-stats"><div class="dsn-stat">AZ <span class="val">'+az+'\u00B0</span></div><div class="dsn-stat">EL <span class="val">'+el+'\u00B0</span></div><div class="dsn-stat">RTLT <span class="val">'+rt+'s</span></div><div class="dsn-stat">\u2193 <span class="val">'+dl+' Mbps</span></div></div></div><div class="dsn-signal">'+[1,2,3,4].map(function(i){return'<div class="signal-bar" style="height:'+(i*5+4)+'px;opacity:'+(x.downlinkActive?1:.2)+'"></div>'}).join('')+'</div></div>'}).join('')}
+function updateThrusters(t){var g=document.getElementById('thrusterGrid');var ac=0;g.innerHTML=Object.entries(t).map(function(e){var n=esc(e[0]),a=e[1];if(a)ac++;return'<div class="thruster '+(a?'active':'inactive')+'" title="'+n+'">'+n+'</div>'}).join('');document.getElementById('thrusterCount').textContent=ac+' firing'}
+function updateSAW(a){document.getElementById('sawGrid').innerHTML=Object.entries(a).map(function(e){return'<div class="saw-item"><div class="saw-label">'+esc(e[0].toUpperCase())+'</div><div class="saw-value">'+esc(e[1].toFixed(1))+'\u00B0</div></div>'}).join('')}
 function buildTimeline(){const met=orbitData?.metMs??(Date.now()-LAUNCH_TIME);const mh=met/3600000;const ev=[{t:'Launch',s:0,h:0},{t:'SRB Sep',s:126,h:.035},{t:'TLI',s:7200,h:2},{t:'ICPS Sep',s:9600,h:2.7},{t:'Outbound Coast',s:43200,h:12},{t:'Lunar Flyby',s:345600,h:96},{t:'Far Side',s:360000,h:100},{t:'Return Transit',s:518400,h:144},{t:'Re-Entry',s:777600,h:216},{t:'Splashdown',s:820800,h:228}];document.getElementById('timeline').innerHTML=ev.map((e,i)=>{let st='upcoming';if(mh>=e.h+1)st='completed';else if(mh>=e.h-1)st='active';return'<div class="timeline-item '+st+'"><div class="timeline-marker"><div class="timeline-dot"></div>'+(i<ev.length-1?'<div class="timeline-line"></div>':'')+'</div><div class="timeline-content"><div class="timeline-title">'+e.t+'</div><div class="timeline-time">MET '+(e.h<1?(e.s+'s'):(e.h.toFixed(0)+'h'))+'</div></div></div>'}).join('')}
 
 // ═══════════════════════════════════════════════════════════════════
