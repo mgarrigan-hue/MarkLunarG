@@ -661,8 +661,9 @@ function drawFrame(ts){
 
   var ct;
   if(animMode==='live'){
-    var lp=arowData?.positionKm?{x:arowData.positionKm.x,y:-arowData.positionKm.y}:getTrajectoryPt(animMetH);
-    ct={x:lp.x,y:lp.y,vw:50000};
+    // Stay on the trajectory path — use the spline position at current MET
+    var livePt=getTrajectoryPt(Math.min(animMetH,TOTAL_H));
+    ct={x:livePt.x,y:livePt.y,vw:50000};
   }else{ct=getCamTarget(animMetH)}
   ct.vw/=userZoom;ct.x+=userPanX;ct.y+=userPanY;
 
@@ -719,7 +720,7 @@ function drawFrame(ts){
   while(particles.length>MAX_PARTICLES)particles.shift();
 
   // Orion position
-  var orionKm;if(animMode==='live'&&arowData?.positionKm){orionKm={x:arowData.positionKm.x,y:-arowData.positionKm.y}}else{orionKm=getTrajectoryPt(animMetH)}
+  var orionKm=getTrajectoryPt(Math.min(animMetH,TOTAL_H));
   var ox=toX(orionKm.x),oy=toY(orionKm.y);
   trailPts.push({x:ox,y:oy,t:ts});while(trailPts.length>50)trailPts.shift();
 
