@@ -248,8 +248,8 @@
           <div class="anim-time" id="animTime">T+ 0d 00:00</div>
           <div class="anim-speed">
             <button class="speed-btn" data-speed="1">1×</button>
-            <button class="speed-btn active" data-speed="3">3×</button>
-            <button class="speed-btn" data-speed="8">8×</button>
+            <button class="speed-btn" data-speed="3">3×</button>
+            <button class="speed-btn active" data-speed="8">8×</button>
             <button class="speed-btn" data-speed="20">20×</button>
           </div>
           <button class="anim-btn anim-btn-accent" id="btnSkip">⏭ LIVE</button>
@@ -432,13 +432,39 @@ function spawnParticles(cx,cy,count,hue,spread,sizeMax,decayMin,decayMax){
 }
 
 // ─── ANIMATION STATE ───
-let animMode='replay', animPlaying=true, animMetH=0, animSpeed=3, animLastTs=0;
+let animMode='replay', animPlaying=true, animMetH=0, animSpeed=8, animLastTs=0;
 let currentLiveMetH=(Date.now()-LAUNCH_TIME)/3600000;
 let isDragging=false;
 let cam={x:8000,y:5000,vw:65000};
 let milestoneActive=null, milestoneTime=0;
 let milestonesShown=new Set();
 const trailPts=[];
+let camShakeX=0, camShakeY=0;
+let letterboxAmt=0; // 0..1 for cinematic bars
+
+// ─── SHOOTING STARS ───
+const shootingStars=[];
+let nextShootingStar=2000+Math.random()*5000;
+
+function spawnShootingStar(ts){
+  const angle=Math.random()*Math.PI*2;
+  const speed=300+Math.random()*500;
+  shootingStars.push({
+    x:Math.random()*1.2-.1, y:Math.random()*1.2-.1,
+    vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed,
+    life:1, decay:.6+Math.random()*.8,
+    size:.8+Math.random()*1.2, born:ts
+  });
+}
+
+// ─── TELEMETRY SMOOTH TRANSITIONS ───
+const telemSmooth={};
+function smoothTelem(id,target,speed=0.08){
+  if(target==null||isNaN(target))return target;
+  if(!(id in telemSmooth))telemSmooth[id]=target;
+  telemSmooth[id]+=(target-telemSmooth[id])*speed;
+  return telemSmooth[id];
+}
 
 // ─── FORMAT ───
 function fmt(n,d=0){if(n==null||isNaN(n))return'--';return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
@@ -469,14 +495,14 @@ async function fetchAll(){
 // ─── UI UPDATE (telemetry panels) ───
 function updateUI(){
   if(orbitData){
-    document.getElementById('speedValue').textContent=fmt(orbitData.speedKmH,1);
-    document.getElementById('earthDistValue').textContent=fmt(orbitData.earthDistKm,0);
-    document.getElementById('moonDistValue').textContent=fmt(orbitData.moonDistKm,0);
-    document.getElementById('altitudeValue').textContent=fmt(orbitData.altitudeKm,0);
-    document.getElementById('moonSpeedValue').textContent=fmt(orbitData.moonRelSpeedKmH,1);
-    document.getElementById('gForceValue').textContent=(orbitData.gForce??0).toFixed(6);
-    document.getElementById('periapsisValue').textContent=fmt(orbitData.periapsisKm,1);
-    document.getElementById('apoapsisValue').textContent=fmt(orbitData.apoapsisKm,0);
+    document.getElementById('speedValue').textContent=fmt(smoothTelem('spd',orbitData.speedKmH),1);
+    document.getElementById('earthDistValue').textContent=fmt(smoothTelem('edist',orbitData.earthDistKm),0);
+    document.getElementById('moonDistValue').textContent=fmt(smoothTelem('mdist',orbitData.moonDistKm),0);
+    document.getElementById('altitudeValue').textContent=fmt(smoothTelem('alt',orbitData.altitudeKm),0);
+    document.getElementById('moonSpeedValue').textContent=fmt(smoothTelem('mspd',orbitData.moonRelSpeedKmH),1);
+    document.getElementById('gForceValue').textContent=smoothTelem('gf',orbitData.gForce??0).toFixed(6);
+    document.getElementById('periapsisValue').textContent=fmt(smoothTelem('peri',orbitData.periapsisKm),1);
+    document.getElementById('apoapsisValue').textContent=fmt(smoothTelem('apo',orbitData.apoapsisKm),0);
   }
   if(arowData){
     document.getElementById('lastUpdate').textContent=new Date(arowData.timestamp).toLocaleTimeString();
@@ -534,20 +560,30 @@ function drawFrame(ts){
   document.getElementById('progressThumb').style.left=pct+'%';
   document.getElementById('animTime').textContent=fmtShort(animMetH);
 
+  // ─── Camera shake during burns ───
+  const isBurn=(animMetH<3)||(animMetH>95&&animMetH<97.5);
+  const shakeIntensity=isBurn?(animMetH<3?1.5:2.5):0;
+  const shakeTarget={x:(Math.random()-.5)*shakeIntensity*2, y:(Math.random()-.5)*shakeIntensity*2};
+  camShakeX+=(shakeTarget.x-camShakeX)*0.3;
+  camShakeY+=(shakeTarget.y-camShakeY)*0.3;
+
   // ─── Camera ───
   const ct=animMode==='live'?{x:192000,y:0,vw:530000}:getCamTarget(animMetH);
-  const lerpF=1-Math.exp(-2.0*((ts-(animLastTs||ts))/1000||0.016));
   const smooth=animMode==='live'?0.03:0.045;
   cam.x+=(ct.x-cam.x)*smooth;cam.y+=(ct.y-cam.y)*smooth;cam.vw+=(ct.vw-cam.vw)*smooth;
 
   const scale=w/cam.vw;
-  const toX=km=>(km-cam.x)*scale+w/2;
-  const toY=km=>-(km-cam.y)*scale+h/2;
+  const toX=km=>(km-cam.x)*scale+w/2+camShakeX;
+  const toY=km=>-(km-cam.y)*scale+h/2+camShakeY;
+
+  // ─── Letterboxing ───
+  const lbTarget=milestoneActive?1:0;
+  letterboxAmt+=(lbTarget-letterboxAmt)*0.06;
 
   // ─── Clear + deep space background ───
   ctx.fillStyle='#020510';ctx.fillRect(0,0,w,h);
 
-  // Subtle nebula glow that moves with camera
+  // Subtle nebula glow
   const nebulaX=toX(192000),nebulaY=toY(5000);
   const nb=ctx.createRadialGradient(nebulaX,nebulaY,0,nebulaX,nebulaY,w*.6);
   nb.addColorStop(0,'rgba(30,20,80,0.08)');nb.addColorStop(.5,'rgba(15,25,60,0.04)');nb.addColorStop(1,'transparent');
@@ -559,8 +595,7 @@ function drawFrame(ts){
     const alpha=s.bright*(.5+twinkle*.5);
     const px=((s.x*w - cam.x*0.00003*s.depth*w)%w+w)%w;
     const py=((s.y*h + cam.y*0.00003*s.depth*h)%h+h)%h;
-    ctx.globalAlpha=alpha;
-    ctx.fillStyle='#fff';
+    ctx.globalAlpha=alpha;ctx.fillStyle='#fff';
     ctx.beginPath();ctx.arc(px,py,s.size,0,Math.PI*2);ctx.fill();
     if(s.size>1.2&&twinkle>.7){
       ctx.globalAlpha=alpha*.3;
@@ -570,11 +605,31 @@ function drawFrame(ts){
   });
   ctx.globalAlpha=1;
 
+  // ─── Shooting stars ───
+  nextShootingStar-=16;
+  if(nextShootingStar<=0){spawnShootingStar(ts);nextShootingStar=5000+Math.random()*10000;}
+  ctx.globalCompositeOperation='lighter';
+  for(let i=shootingStars.length-1;i>=0;i--){
+    const ss=shootingStars[i];
+    ss.x+=ss.vx/w*0.016;ss.y+=ss.vy/h*0.016;ss.life-=ss.decay*0.016;
+    if(ss.life<=0){shootingStars.splice(i,1);continue}
+    const sx=ss.x*w,sy=ss.y*h;
+    const tailLen=40+ss.size*20;
+    const angle=Math.atan2(ss.vy,ss.vx);
+    const g=ctx.createLinearGradient(sx,sy,sx-Math.cos(angle)*tailLen,sy-Math.sin(angle)*tailLen);
+    g.addColorStop(0,`rgba(255,255,255,${ss.life*0.9})`);g.addColorStop(1,'transparent');
+    ctx.strokeStyle=g;ctx.lineWidth=ss.size;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-Math.cos(angle)*tailLen,sy-Math.sin(angle)*tailLen);ctx.stroke();
+    // Bright head
+    ctx.fillStyle=`rgba(200,220,255,${ss.life})`;
+    ctx.beginPath();ctx.arc(sx,sy,ss.size*.8,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over';ctx.lineCap='butt';
+
   // ─── Draw Earth ───
   const ex=toX(0),ey=toY(0);
   const er=Math.max(12,6371*scale);
 
-  // Atmosphere glow
   const atm=ctx.createRadialGradient(ex,ey,er*.7,ex,ey,er*5);
   atm.addColorStop(0,'rgba(60,140,255,0.25)');atm.addColorStop(.4,'rgba(30,80,200,0.08)');atm.addColorStop(1,'transparent');
   ctx.fillStyle=atm;ctx.beginPath();ctx.arc(ex,ey,er*5,0,Math.PI*2);ctx.fill();
@@ -582,10 +637,23 @@ function drawFrame(ts){
   const ef=ctx.createRadialGradient(ex-er*.3,ey-er*.3,er*.1,ex,ey,er);
   ef.addColorStop(0,'#7dc4ff');ef.addColorStop(.3,'#3b8bdb');ef.addColorStop(.7,'#1a5ba0');ef.addColorStop(1,'#0d2847');
   ctx.fillStyle=ef;ctx.beginPath();ctx.arc(ex,ey,er,0,Math.PI*2);ctx.fill();
-
-  // Atmosphere ring
   ctx.strokeStyle='rgba(100,180,255,0.15)';ctx.lineWidth=er*.25;
   ctx.beginPath();ctx.arc(ex,ey,er+er*.12,0,Math.PI*2);ctx.stroke();
+
+  // Earth lens flare
+  if(er>10){
+    ctx.globalCompositeOperation='lighter';
+    const flarePulse=.5+.5*Math.sin(ts/2000);
+    const flareAlpha=0.06+flarePulse*0.04;
+    for(let r=0;r<6;r++){
+      const angle=r*Math.PI/3+ts/8000;
+      const rayLen=er*3+flarePulse*er;
+      ctx.strokeStyle=`rgba(100,180,255,${flareAlpha})`;ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(ex,ey);
+      ctx.lineTo(ex+Math.cos(angle)*rayLen,ey+Math.sin(angle)*rayLen);ctx.stroke();
+    }
+    ctx.globalCompositeOperation='source-over';
+  }
 
   if(er>6){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font=`bold ${Math.min(13,er*.8)}px Inter`;ctx.textAlign='center';ctx.fillText('Earth',ex,ey+er+16)}
 
@@ -601,20 +669,26 @@ function drawFrame(ts){
   mf.addColorStop(0,'#f0e8d0');mf.addColorStop(.4,'#c8ba92');mf.addColorStop(.8,'#8a7d5a');mf.addColorStop(1,'#5a5030');
   ctx.fillStyle=mf;ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.fill();
 
-  // Craters (subtle)
+  if(mr>8){ctx.fillStyle='rgba(0,0,0,0.1)';[[.2,-.3,.18],[-.15,.2,.12],[.3,.1,.08]].forEach(([dx,dy,r])=>{ctx.beginPath();ctx.arc(mx+dx*mr,my+dy*mr,r*mr,0,Math.PI*2);ctx.fill()})}
+
+  // Moon lens flare
   if(mr>8){
-    ctx.fillStyle='rgba(0,0,0,0.1)';
-    [[.2,-.3,.18],[-.15,.2,.12],[.3,.1,.08]].forEach(([dx,dy,r])=>{
-      ctx.beginPath();ctx.arc(mx+dx*mr,my+dy*mr,r*mr,0,Math.PI*2);ctx.fill();
-    });
+    ctx.globalCompositeOperation='lighter';
+    const mfp=.5+.5*Math.sin(ts/2500+1);
+    for(let r=0;r<4;r++){
+      const angle=r*Math.PI/2+ts/6000;
+      const rayLen=mr*2.5+mfp*mr;
+      ctx.strokeStyle=`rgba(212,197,160,${0.05+mfp*0.03})`;ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx+Math.cos(angle)*rayLen,my+Math.sin(angle)*rayLen);ctx.stroke();
+    }
+    ctx.globalCompositeOperation='source-over';
   }
 
   if(mr>4){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font=`bold ${Math.min(13,mr*.8)}px Inter`;ctx.textAlign='center';ctx.fillText('Moon',mx,my+mr+16)}
 
   // ─── Full planned path (ghost line) ───
   ctx.strokeStyle='rgba(100,116,139,0.08)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
-  ctx.beginPath();
-  PATH.forEach((p,i)=>{const px=toX(p.x),py=toY(p.y);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py)});
+  ctx.beginPath();PATH.forEach((p,i)=>{const px=toX(p.x),py=toY(p.y);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py)});
   ctx.stroke();ctx.setLineDash([]);
 
   // ─── Travelled path with gradient glow ───
@@ -622,27 +696,20 @@ function drawFrame(ts){
   for(let i=0;i<PATH.length;i++){if(PATH[i].h<=animMetH)tIdx=i;else break}
 
   if(tIdx>1){
-    // Main trail — segmented gradient
     for(let i=1;i<=tIdx;i++){
       const prog=i/tIdx;
       const p0=PATH[i-1],p1=PATH[i];
-      const x0=toX(p0.x),y0=toY(p0.y),x1=toX(p1.x),y1=toY(p1.y);
-
-      // Blue trail
       ctx.strokeStyle=`rgba(59,130,246,${0.05+prog*0.35})`;
       ctx.lineWidth=.5+prog*2;
-      ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(toX(p0.x),toY(p0.y));ctx.lineTo(toX(p1.x),toY(p1.y));ctx.stroke();
     }
-
-    // Hot leading glow (last ~30 segments)
     const glowN=Math.min(30,tIdx);
     ctx.globalCompositeOperation='lighter';
     for(let i=tIdx-glowN+1;i<=tIdx;i++){
       if(i<1)continue;
       const lp=(i-(tIdx-glowN))/(glowN);
       const p0=PATH[i-1],p1=PATH[i];
-      ctx.strokeStyle=`rgba(34,197,94,${lp*0.3})`;
-      ctx.lineWidth=2+lp*4;
+      ctx.strokeStyle=`rgba(34,197,94,${lp*0.3})`;ctx.lineWidth=2+lp*4;
       ctx.beginPath();ctx.moveTo(toX(p0.x),toY(p0.y));ctx.lineTo(toX(p1.x),toY(p1.y));ctx.stroke();
     }
     ctx.globalCompositeOperation='source-over';
@@ -650,15 +717,12 @@ function drawFrame(ts){
 
   // ─── Particles update & draw ───
   for(let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    p.x+=p.vx*0.016;p.y+=p.vy*0.016;p.life-=p.decay;
+    const p=particles[i];p.x+=p.vx*0.016;p.y+=p.vy*0.016;p.life-=p.decay;
     if(p.life<=0){particles.splice(i,1);continue}
   }
-  // Draw particles
   ctx.globalCompositeOperation='lighter';
   particles.forEach(p=>{
-    const a=p.life*.6;
-    const r=p.size*(1+(.5-p.life)*.5);
+    const a=p.life*.6;const r=p.size*(1+(.5-p.life)*.5);
     ctx.fillStyle=p.hue===142?`rgba(34,197,94,${a})`:`rgba(120,180,255,${a})`;
     ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
   });
@@ -676,29 +740,38 @@ function drawFrame(ts){
 
   // Comet trail — store canvas positions
   trailPts.push({x:ox,y:oy,t:ts});
-  while(trailPts.length>50)trailPts.shift();
+  while(trailPts.length>60)trailPts.shift();
 
-  // Draw comet tail
+  // Speed-responsive tail: compute velocity from last 2 waypoints
+  let speedFactor=0.5;
+  if(tIdx>1){
+    const p0=PATH[Math.max(0,tIdx-1)],p1=PATH[tIdx];
+    const dx=p1.x-p0.x,dy=p1.y-p0.y,dh=Math.max(0.01,p1.h-p0.h);
+    speedFactor=Math.min(2,Math.sqrt(dx*dx+dy*dy)/dh/5000);
+  }
+  if(isBurn)speedFactor=Math.max(speedFactor,1.5);
+
+  // Draw comet tail (speed-responsive)
   ctx.globalCompositeOperation='lighter';
   trailPts.forEach((tp,i)=>{
     const prog=i/trailPts.length;
     const age=(ts-tp.t)/2000;
-    const a=Math.max(0,(1-age)*prog*0.5);
+    const a=Math.max(0,(1-age)*prog*0.5*speedFactor);
     if(a<=0)return;
-    const sz=1+prog*4;
+    const sz=(1+prog*4)*speedFactor;
     const g=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,sz*2);
     g.addColorStop(0,`rgba(34,197,94,${a})`);g.addColorStop(1,'transparent');
     ctx.fillStyle=g;ctx.beginPath();ctx.arc(tp.x,tp.y,sz*2,0,Math.PI*2);ctx.fill();
   });
   ctx.globalCompositeOperation='source-over';
 
-  // Spawn engine particles
+  // Spawn engine particles (speed-responsive)
   if(animMode==='replay'&&animPlaying){
-    spawnParticles(ox,oy,2,142,8,2.5,.01,.035);
-    // Extra thrust during burns
-    if(animMetH<3||( animMetH>95&&animMetH<97)){
-      spawnParticles(ox,oy,4,142,12,4,.02,.04);
-      spawnParticles(ox,oy,2,217,6,2,.015,.03);
+    const pCount=Math.max(1,Math.round(2*speedFactor));
+    spawnParticles(ox,oy,pCount,142,8*speedFactor,2.5*speedFactor,.01,.035);
+    if(isBurn){
+      spawnParticles(ox,oy,Math.round(4*speedFactor),142,12,4,.02,.04);
+      spawnParticles(ox,oy,Math.round(3*speedFactor),217,8,3,.015,.03);
     }
   }
 
@@ -708,6 +781,17 @@ function drawFrame(ts){
   og.addColorStop(0,'rgba(34,197,94,0.8)');og.addColorStop(.3,'rgba(34,197,94,0.2)');og.addColorStop(1,'transparent');
   ctx.globalCompositeOperation='lighter';
   ctx.fillStyle=og;ctx.beginPath();ctx.arc(ox,oy,ogR,0,Math.PI*2);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+
+  // Orion lens flare
+  ctx.globalCompositeOperation='lighter';
+  const ofp=.5+.5*Math.sin(ts/400);
+  for(let r=0;r<8;r++){
+    const angle=r*Math.PI/4+ts/1500;
+    const rayLen=12+ofp*8+speedFactor*6;
+    ctx.strokeStyle=`rgba(34,197,94,${0.08+ofp*0.06})`;ctx.lineWidth=.8;
+    ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ox+Math.cos(angle)*rayLen,oy+Math.sin(angle)*rayLen);ctx.stroke();
+  }
   ctx.globalCompositeOperation='source-over';
 
   // Pulsing ring
@@ -723,94 +807,114 @@ function drawFrame(ts){
   ctx.fillStyle='#22c55e';ctx.font='bold 11px Inter';ctx.textAlign='left';
   ctx.fillText('Orion',ox+14,oy-8);
 
-  // Distance lines (live mode)
-  if(animMode==='live'&&orbitData){
-    ctx.setLineDash([2,4]);ctx.lineWidth=.5;
-    ctx.strokeStyle='rgba(74,158,255,.2)';ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ex,ey);ctx.stroke();
-    ctx.strokeStyle='rgba(249,115,22,.2)';ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(mx,my);ctx.stroke();
-    ctx.setLineDash([]);
-    if(orbitData.earthDistKm){ctx.fillStyle='rgba(74,158,255,.5)';ctx.font='9px JetBrains Mono';ctx.textAlign='center';ctx.fillText(fmtC(orbitData.earthDistKm)+' km',(ox+ex)/2,(oy+ey)/2-6)}
-    if(orbitData.moonDistKm){ctx.fillStyle='rgba(249,115,22,.5)';ctx.font='9px JetBrains Mono';ctx.textAlign='center';ctx.fillText(fmtC(orbitData.moonDistKm)+' km',(ox+mx)/2,(oy+my)/2-6)}
-    if(orbitData.speedKmH){ctx.fillStyle='rgba(34,197,94,.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='left';ctx.fillText(fmt(orbitData.speedKmH,0)+' km/h',ox+14,oy+6)}
+  // ─── Distance tethers (both replay & live) ───
+  const distE=Math.sqrt(orionKm.x**2+orionKm.y**2);
+  const distM=Math.sqrt((orionKm.x-EMD)**2+orionKm.y**2);
+
+  // Pulsing dashed tether lines
+  const dashOffset=ts/80;
+  ctx.setLineDash([4,6]);ctx.lineDashOffset=-dashOffset;ctx.lineWidth=.7;
+  ctx.strokeStyle=`rgba(74,158,255,${0.15+.05*Math.sin(ts/600)})`;
+  ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ex,ey);ctx.stroke();
+  ctx.strokeStyle=`rgba(249,115,22,${0.15+.05*Math.sin(ts/600+1)})`;
+  ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(mx,my);ctx.stroke();
+  ctx.setLineDash([]);ctx.lineDashOffset=0;
+
+  // Distance labels on tethers
+  const edLabel=animMode==='live'&&orbitData?.earthDistKm?fmtC(orbitData.earthDistKm):fmtC(distE);
+  const mdLabel=animMode==='live'&&orbitData?.moonDistKm?fmtC(orbitData.moonDistKm):fmtC(distM);
+  ctx.fillStyle='rgba(74,158,255,.5)';ctx.font='9px JetBrains Mono';ctx.textAlign='center';
+  ctx.fillText(edLabel+' km',(ox+ex)/2,(oy+ey)/2-6);
+  ctx.fillStyle='rgba(249,115,22,.5)';
+  ctx.fillText(mdLabel+' km',(ox+mx)/2,(oy+my)/2-6);
+
+  if(animMode==='live'&&orbitData?.speedKmH){
+    ctx.fillStyle='rgba(34,197,94,.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='left';
+    ctx.fillText(fmt(orbitData.speedKmH,0)+' km/h',ox+14,oy+6);
   }
 
   // ─── Cinematic HUD during replay ───
   if(animMode==='replay'){
-    // Compute distance from Earth for replay
-    const distE=Math.sqrt(orionKm.x**2+orionKm.y**2);
-    const distM=Math.sqrt((orionKm.x-EMD)**2+orionKm.y**2);
-
     ctx.save();
-    // Top-left: Earth distance
-    ctx.fillStyle='rgba(74,158,255,0.6)';
-    ctx.font='10px JetBrains Mono';ctx.textAlign='left';
+    ctx.fillStyle='rgba(74,158,255,0.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='left';
     ctx.fillText('EARTH DIST',16,30);
-    ctx.font='bold 22px JetBrains Mono';
-    ctx.fillStyle='rgba(74,158,255,0.8)';
+    ctx.font='bold 22px JetBrains Mono';ctx.fillStyle='rgba(74,158,255,0.8)';
     ctx.fillText(fmtC(distE)+' km',16,54);
-
-    // Top-right: Moon distance
-    ctx.textAlign='right';
-    ctx.fillStyle='rgba(249,115,22,0.6)';
-    ctx.font='10px JetBrains Mono';
+    ctx.textAlign='right';ctx.fillStyle='rgba(249,115,22,0.6)';ctx.font='10px JetBrains Mono';
     ctx.fillText('MOON DIST',w-16,30);
-    ctx.font='bold 22px JetBrains Mono';
-    ctx.fillStyle='rgba(249,115,22,0.8)';
+    ctx.font='bold 22px JetBrains Mono';ctx.fillStyle='rgba(249,115,22,0.8)';
     ctx.fillText(fmtC(distM)+' km',w-16,54);
+    // Speed HUD center
+    ctx.textAlign='center';ctx.fillStyle='rgba(34,197,94,0.5)';ctx.font='10px JetBrains Mono';
+    ctx.fillText('SPEED',w/2,30);
+    const spdKmh=Math.sqrt((tIdx>0?((PATH[tIdx].x-(PATH[Math.max(0,tIdx-1)].x))**2+(PATH[tIdx].y-(PATH[Math.max(0,tIdx-1)].y))**2):0))/Math.max(.01,PATH[tIdx]?.h-PATH[Math.max(0,tIdx-1)]?.h||.01)*3600/1000;
+    ctx.font='bold 20px JetBrains Mono';ctx.fillStyle='rgba(34,197,94,0.7)';
+    ctx.fillText(fmtC(Math.abs(distE>1?spdKmh:0))+' km/h',w/2,50);
     ctx.restore();
   }
 
-  // ─── Milestone title cards ───
-  // Check for new milestones
+  // ─── Milestone title cards (enhanced) ───
+  const msIcons={'LAUNCH':'🚀','SRB SEPARATION':'🔥','TRANS-LUNAR INJECTION':'⚡','OUTBOUND COAST':'🛸','LUNAR FLYBY':'🌙','FAR SIDE OF THE MOON':'🌑','RETURN TRANSIT':'↩️','SPLASHDOWN':'🪂'};
   if(animMode==='replay'){
     for(const ms of MILESTONES){
       if(!milestonesShown.has(ms.h)&&animMetH>=ms.h){
-        milestonesShown.add(ms.h);
-        milestoneActive=ms;
-        milestoneTime=ts;
+        milestonesShown.add(ms.h);milestoneActive=ms;milestoneTime=ts;
       }
     }
   }
 
   if(milestoneActive){
     const elapsed=ts-milestoneTime;
-    const dur=3200;
+    const dur=3500;
     if(elapsed>dur){milestoneActive=null}
     else{
       let alpha;
-      if(elapsed<500)alpha=elapsed/500;
-      else if(elapsed>dur-600)alpha=(dur-elapsed)/600;
+      if(elapsed<600)alpha=elapsed/600;
+      else if(elapsed>dur-700)alpha=(dur-elapsed)/700;
       else alpha=1;
 
       ctx.save();ctx.globalAlpha=alpha;
 
-      // Background bar
+      // Frosted glass bar
       const barY=h*.38;
-      ctx.fillStyle='rgba(2,5,16,0.7)';
-      ctx.fillRect(0,barY-30,w,75);
+      const barH=85;
+      const frost=ctx.createLinearGradient(0,barY-35,0,barY+barH-35);
+      frost.addColorStop(0,'rgba(8,12,30,0.8)');frost.addColorStop(.5,'rgba(12,18,40,0.85)');frost.addColorStop(1,'rgba(8,12,30,0.8)');
+      ctx.fillStyle=frost;ctx.fillRect(0,barY-35,w,barH);
 
-      // Accent line
-      const lineW=Math.min(w*.6,elapsed/500*w*.6);
-      ctx.fillStyle='rgba(59,130,246,0.6)';
-      ctx.fillRect(w/2-lineW/2,barY-30,lineW,2);
+      // Top & bottom accent lines (animated width)
+      const lineW=Math.min(w*.65,elapsed/500*w*.65);
+      ctx.fillStyle='rgba(59,130,246,0.5)';ctx.fillRect(w/2-lineW/2,barY-35,lineW,1.5);
+      ctx.fillStyle='rgba(59,130,246,0.3)';ctx.fillRect(w/2-lineW/2,barY+barH-36,lineW,1);
 
-      // Title
-      ctx.fillStyle='#fff';
-      ctx.font='bold 26px Inter';ctx.textAlign='center';ctx.letterSpacing='4px';
-      ctx.fillText(milestoneActive.title,w/2,barY+4);
+      // Milestone counter
+      const msIdx=MILESTONES.indexOf(milestoneActive);
+      ctx.fillStyle='rgba(100,116,139,0.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='center';
+      ctx.fillText(`${msIdx+1} OF ${MILESTONES.length}`,w/2,barY-20);
+
+      // Icon + Title
+      const icon=msIcons[milestoneActive.title]||'✦';
+      ctx.fillStyle='#fff';ctx.font='bold 28px Inter';ctx.textAlign='center';
+      ctx.fillText(icon+'  '+milestoneActive.title,w/2,barY+8);
 
       // Subtitle
-      ctx.fillStyle='rgba(59,130,246,0.8)';
-      ctx.font='12px Inter';
-      ctx.fillText(milestoneActive.sub,w/2,barY+26);
+      ctx.fillStyle='rgba(59,130,246,0.85)';ctx.font='13px Inter';
+      ctx.fillText(milestoneActive.sub,w/2,barY+30);
 
       // MET
-      ctx.fillStyle='rgba(34,197,94,0.7)';
-      ctx.font='11px JetBrains Mono';
-      ctx.fillText(fmtShort(milestoneActive.h),w/2,barY+43);
+      ctx.fillStyle='rgba(34,197,94,0.7)';ctx.font='11px JetBrains Mono';
+      ctx.fillText(fmtShort(milestoneActive.h),w/2,barY+47);
 
       ctx.restore();
     }
+  }
+
+  // ─── Cinematic letterboxing ───
+  if(letterboxAmt>0.005){
+    const barH=h*0.06*letterboxAmt;
+    ctx.fillStyle=`rgba(0,0,0,${0.85*letterboxAmt})`;
+    ctx.fillRect(0,0,w,barH);
+    ctx.fillRect(0,h-barH,w,barH);
   }
 
   // ─── Vignette ───
