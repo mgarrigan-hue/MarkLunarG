@@ -441,7 +441,9 @@ let milestonesShown=new Set();
 const trailPts=[];
 let camShakeX=0, camShakeY=0;
 let letterboxAmt=0;
-let userZoom=1; // user scroll zoom multiplier (>1 = zoom in, <1 = zoom out)
+let userZoom=1;
+let userPanX=0, userPanY=0; // user drag offset in km
+let isPanning=false, panStartX=0, panStartY=0, panStartKmX=0, panStartKmY=0;
 
 // ─── SHOOTING STARS ───
 const shootingStars=[];
@@ -577,8 +579,10 @@ function drawFrame(ts){
   }else{
     ct=getCamTarget(animMetH);
   }
-  // Apply user zoom
+  // Apply user zoom and pan
   ct.vw=ct.vw/userZoom;
+  ct.x+=userPanX;
+  ct.y+=userPanY;
   const smooth=animMode==='live'?0.04:0.045;
   cam.x+=(ct.x-cam.x)*smooth;cam.y+=(ct.y-cam.y)*smooth;cam.vw+=(ct.vw-cam.vw)*smooth;
 
@@ -1091,13 +1095,13 @@ function drawFrame(ts){
 
 // ─── CONTROLS ───
 function switchToLive(){
-  animMode='live';animMetH=currentLiveMetH;trailPts.length=0;userZoom=1;
+  animMode='live';animMetH=currentLiveMetH;trailPts.length=0;userZoom=1;userPanX=0;userPanY=0;
   const b=document.getElementById('trajectoryBadge');b.textContent='LIVE';b.style.background='rgba(34,197,94,.15)';b.style.color='var(--green)';b.style.borderColor='rgba(34,197,94,.3)';
   document.getElementById('btnSkip').textContent='↩ REPLAY';document.getElementById('btnSkip').className='anim-btn anim-btn-green';
   document.getElementById('btnPlayPause').textContent='●';document.getElementById('btnPlayPause').style.color='var(--green)';
 }
 function switchToReplay(){
-  animMode='replay';animMetH=0;animPlaying=true;animLastTs=0;trailPts.length=0;particles.length=0;milestonesShown.clear();milestoneActive=null;userZoom=1;
+  animMode='replay';animMetH=0;animPlaying=true;animLastTs=0;trailPts.length=0;particles.length=0;milestonesShown.clear();milestoneActive=null;userZoom=1;userPanX=0;userPanY=0;
   cam={x:8000,y:5000,vw:65000};
   const b=document.getElementById('trajectoryBadge');b.textContent='REPLAY';b.style.background='';b.style.color='';b.style.borderColor='';
   document.getElementById('btnSkip').textContent='⏭ LIVE';document.getElementById('btnSkip').className='anim-btn anim-btn-accent';
@@ -1122,6 +1126,44 @@ function setupControls(){
     const zoomDelta=e.deltaY>0?0.85:1.18;
     userZoom=Math.max(0.15,Math.min(10,userZoom*zoomDelta));
   },{passive:false});
+
+  // Click-drag to pan
+  canvas.addEventListener('mousedown',e=>{
+    if(e.button!==0)return;
+    isPanning=true;panStartX=e.clientX;panStartY=e.clientY;
+    panStartKmX=userPanX;panStartKmY=userPanY;
+    canvas.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!isPanning)return;
+    const dx=e.clientX-panStartX,dy=e.clientY-panStartY;
+    const kmPerPx=cam.vw/canvas.clientWidth;
+    userPanX=panStartKmX-dx*kmPerPx;
+    userPanY=panStartKmY+dy*kmPerPx;
+  });
+  window.addEventListener('mouseup',()=>{if(isPanning){isPanning=false;canvas.style.cursor='grab'}});
+  canvas.style.cursor='grab';
+
+  // Touch drag to pan
+  let touchPanId=null;
+  canvas.addEventListener('touchstart',e2=>{
+    if(e2.target!==canvas||touchPanId!==null)return;
+    const t=e2.touches[0];touchPanId=t.identifier;
+    panStartX=t.clientX;panStartY=t.clientY;panStartKmX=userPanX;panStartKmY=userPanY;
+  },{passive:true});
+  window.addEventListener('touchmove',e2=>{
+    if(touchPanId===null)return;
+    for(const t of e2.changedTouches){
+      if(t.identifier===touchPanId){
+        const dx=t.clientX-panStartX,dy=t.clientY-panStartY;
+        const kmPerPx=cam.vw/canvas.clientWidth;
+        userPanX=panStartKmX-dx*kmPerPx;userPanY=panStartKmY+dy*kmPerPx;
+      }
+    }
+  },{passive:true});
+  window.addEventListener('touchend',e2=>{
+    for(const t of e2.changedTouches){if(t.identifier===touchPanId)touchPanId=null}
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
