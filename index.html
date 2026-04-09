@@ -570,11 +570,11 @@ function drawFrame(ts){
   camShakeY+=(shakeTarget.y-camShakeY)*0.3;
 
   // ─── Camera ───
-  // In live mode, zoom in close to Orion's position
+  // In live mode, zoom in close to Orion's live position
   let ct;
   if(animMode==='live'){
     const livePos=arowData?.positionKm?{x:arowData.positionKm.x,y:-arowData.positionKm.y}:getTrajectoryPt(animMetH);
-    ct={x:livePos.x,y:livePos.y,vw:120000};
+    ct={x:livePos.x,y:livePos.y,vw:60000}; // tight close-up
   }else{
     ct=getCamTarget(animMetH);
   }
@@ -861,7 +861,94 @@ function drawFrame(ts){
   ctx.fillStyle=og;ctx.beginPath();ctx.arc(ox,oy,ogR,0,Math.PI*2);ctx.fill();
   ctx.globalCompositeOperation='source-over';
 
-  // Orion lens flare
+  // ─── Draw Orion Spacecraft (detailed) ───
+  // Size scales with zoom — bigger when zoomed in
+  const scSize=Math.max(6,Math.min(40,w/cam.vw*8000));
+  ctx.save();
+  ctx.translate(ox,oy);
+
+  // Get attitude for rotation if available
+  const scRot=arowData?.eulerDeg?(arowData.eulerDeg.yaw*Math.PI/180):0;
+  ctx.rotate(scRot);
+
+  if(scSize>10){
+    // ── Service Module (cylinder at back) ──
+    const smW=scSize*.45,smH=scSize*.9;
+    ctx.fillStyle='#3a3d42';
+    ctx.fillRect(-smW/2,scSize*.05,smW,smH);
+    // SM panel lines
+    ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.lineWidth=0.5;
+    for(let i=1;i<4;i++){
+      const ly=scSize*.05+smH*i/4;
+      ctx.beginPath();ctx.moveTo(-smW/2,ly);ctx.lineTo(smW/2,ly);ctx.stroke();
+    }
+    // SM nozzle
+    ctx.fillStyle='#555';
+    ctx.beginPath();ctx.moveTo(-smW*.3,scSize*.05+smH);ctx.lineTo(smW*.3,scSize*.05+smH);
+    ctx.lineTo(smW*.4,scSize*.05+smH+scSize*.12);ctx.lineTo(-smW*.4,scSize*.05+smH+scSize*.12);
+    ctx.closePath();ctx.fill();
+    ctx.fillStyle='#222';
+    ctx.beginPath();ctx.arc(0,scSize*.05+smH+scSize*.12,smW*.25,0,Math.PI*2);ctx.fill();
+
+    // ── Solar Array Wings (4 panels) ──
+    const sawLen=scSize*1.2,sawW=scSize*.18;
+    const sawY=scSize*.35;
+    // Left pair
+    ctx.fillStyle='#1a3a6a';
+    ctx.fillRect(-smW/2-sawLen,sawY-sawW/2,sawLen,sawW);
+    ctx.fillRect(-smW/2-sawLen,sawY+sawW*.3,sawLen,sawW);
+    // Right pair
+    ctx.fillRect(smW/2,sawY-sawW/2,sawLen,sawW);
+    ctx.fillRect(smW/2,sawY+sawW*.3,sawLen,sawW);
+    // Panel grid lines
+    ctx.strokeStyle='rgba(100,160,255,0.15)';ctx.lineWidth=0.5;
+    for(let side=-1;side<=1;side+=2){
+      const sx=side<0?-smW/2-sawLen:smW/2;
+      for(let g=0;g<6;g++){
+        const gx=sx+sawLen*g/5;
+        ctx.beginPath();ctx.moveTo(gx,sawY-sawW/2);ctx.lineTo(gx,sawY+sawW*1.3);ctx.stroke();
+      }
+    }
+    // Panel glint
+    ctx.fillStyle='rgba(100,160,255,0.08)';
+    ctx.fillRect(-smW/2-sawLen,sawY-sawW/2,sawLen*.4,sawW*1.8);
+    ctx.fillRect(smW/2+sawLen*.6,sawY-sawW/2,sawLen*.4,sawW*1.8);
+
+    // ── Crew Module (capsule cone at front) ──
+    ctx.fillStyle='#c8c0b0';
+    ctx.beginPath();
+    ctx.moveTo(-smW*.5,scSize*.05);
+    ctx.lineTo(smW*.5,scSize*.05);
+    ctx.lineTo(smW*.2,-scSize*.35);
+    ctx.lineTo(-smW*.2,-scSize*.35);
+    ctx.closePath();ctx.fill();
+    // Heat shield (top)
+    ctx.fillStyle='#8b7355';
+    ctx.beginPath();
+    ctx.moveTo(-smW*.22,-scSize*.35);
+    ctx.quadraticCurveTo(0,-scSize*.48,smW*.22,-scSize*.35);
+    ctx.lineTo(-smW*.22,-scSize*.35);
+    ctx.fill();
+    // Windows
+    ctx.fillStyle='rgba(100,200,255,0.5)';
+    ctx.beginPath();ctx.arc(-smW*.12,-scSize*.15,scSize*.04,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(smW*.12,-scSize*.15,scSize*.04,0,Math.PI*2);ctx.fill();
+    // CM highlight
+    const cmH=ctx.createLinearGradient(-smW*.3,-scSize*.3,smW*.3,scSize*.05);
+    cmH.addColorStop(0,'rgba(255,255,255,0.15)');cmH.addColorStop(1,'transparent');
+    ctx.fillStyle=cmH;
+    ctx.beginPath();ctx.moveTo(-smW*.5,scSize*.05);ctx.lineTo(smW*.5,scSize*.05);
+    ctx.lineTo(smW*.2,-scSize*.35);ctx.lineTo(-smW*.2,-scSize*.35);ctx.closePath();ctx.fill();
+
+  }else{
+    // Small zoom: simple dot
+    ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,0,1.5,0,Math.PI*2);ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Orion lens flare (always)
   ctx.globalCompositeOperation='lighter';
   const ofp=.5+.5*Math.sin(ts/400);
   for(let r=0;r<8;r++){
@@ -873,17 +960,17 @@ function drawFrame(ts){
   ctx.globalCompositeOperation='source-over';
 
   // Pulsing ring
-  const pr=8+Math.sin(ts/350)*3;
-  ctx.strokeStyle=`rgba(34,197,94,${.25+Math.sin(ts/350)*.15})`;ctx.lineWidth=1.5;
+  const pr=Math.max(scSize*.8,8)+Math.sin(ts/350)*3;
+  ctx.strokeStyle=`rgba(34,197,94,${.2+Math.sin(ts/350)*.1})`;ctx.lineWidth=1;
   ctx.beginPath();ctx.arc(ox,oy,pr,0,Math.PI*2);ctx.stroke();
-
-  // Core dot
-  ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ox,oy,1.5,0,Math.PI*2);ctx.fill();
 
   // Label
   ctx.fillStyle='#22c55e';ctx.font='bold 11px Inter';ctx.textAlign='left';
-  ctx.fillText('Orion',ox+14,oy-8);
+  ctx.fillText('Orion',ox+pr+6,oy-4);
+  if(animMode==='live'&&scSize>10){
+    ctx.fillStyle='rgba(34,197,94,0.5)';ctx.font='9px JetBrains Mono';
+    ctx.fillText('CREW MODULE',ox+pr+6,oy+8);
+  }
 
   // ─── Distance tethers (both replay & live) ───
   const distE=Math.sqrt(orionKm.x**2+orionKm.y**2);
