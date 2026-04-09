@@ -345,24 +345,24 @@ const WP = [
 
 // Camera keyframes — cinematic zoom & pan for each phase
 const CAM = [
-  {h:0,   x:8000,   y:5000,   vw:65000},
-  {h:1.5, x:12000,  y:8000,   vw:80000},
-  {h:3,   x:25000,  y:12000,  vw:120000},
-  {h:8,   x:55000,  y:18000,  vw:220000},
-  {h:18,  x:100000, y:22000,  vw:350000},
-  {h:35,  x:170000, y:12000,  vw:500000},
-  {h:75,  x:192000, y:5000,   vw:530000},
-  {h:88,  x:320000, y:8000,   vw:200000},
-  {h:94,  x:378000, y:2000,   vw:80000},   // dramatic Moon zoom
-  {h:96,  x:388000, y:-500,   vw:50000},   // closest approach!
-  {h:99,  x:385000, y:-8000,  vw:70000},
-  {h:106, x:340000, y:-15000, vw:250000},
-  {h:120, x:260000, y:-12000, vw:450000},
-  {h:145, x:192000, y:-5000,  vw:530000},
-  {h:190, x:192000, y:-3000,  vw:530000},
-  {h:210, x:60000,  y:-6000,  vw:200000},
-  {h:222, x:12000,  y:-2000,  vw:80000},
-  {h:228, x:0,      y:0,      vw:50000}
+  {h:0,   x:8000,   y:5000,   vw:55000},
+  {h:1.5, x:12000,  y:8000,   vw:70000},
+  {h:3,   x:25000,  y:12000,  vw:100000},
+  {h:8,   x:55000,  y:18000,  vw:180000},
+  {h:18,  x:100000, y:22000,  vw:280000},
+  {h:35,  x:170000, y:12000,  vw:420000},
+  {h:75,  x:192000, y:5000,   vw:460000},
+  {h:88,  x:320000, y:8000,   vw:180000},
+  {h:94,  x:378000, y:2000,   vw:70000},   // dramatic Moon zoom
+  {h:96,  x:388000, y:-500,   vw:45000},   // closest approach!
+  {h:99,  x:385000, y:-8000,  vw:60000},
+  {h:106, x:340000, y:-15000, vw:200000},
+  {h:120, x:260000, y:-12000, vw:380000},
+  {h:145, x:192000, y:-5000,  vw:460000},
+  {h:190, x:192000, y:-3000,  vw:460000},
+  {h:210, x:60000,  y:-6000,  vw:180000},
+  {h:222, x:12000,  y:-2000,  vw:70000},
+  {h:228, x:0,      y:0,      vw:55000}
 ];
 
 // Milestones for cinematic title cards
@@ -570,11 +570,10 @@ function drawFrame(ts){
   camShakeY+=(shakeTarget.y-camShakeY)*0.3;
 
   // ─── Camera ───
-  // In live mode, zoom in close to Orion's live position
+  // In live mode, show full Earth-Moon overview centered on midpoint
   let ct;
   if(animMode==='live'){
-    const livePos=arowData?.positionKm?{x:arowData.positionKm.x,y:-arowData.positionKm.y}:getTrajectoryPt(animMetH);
-    ct={x:livePos.x,y:livePos.y,vw:60000}; // tight close-up
+    ct={x:192000,y:0,vw:460000};
   }else{
     ct=getCamTarget(animMetH);
   }
