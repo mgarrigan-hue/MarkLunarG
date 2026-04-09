@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Artemis II — Live Mission Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #05080f; --surface: #0c1220; --surface2: #111a2e; --border: #1a2744;
+    --accent: #3b82f6; --accent-glow: rgba(59,130,246,0.25);
+    --green: #22c55e; --green-glow: rgba(34,197,94,0.3);
+    --orange: #f97316; --red: #ef4444; --yellow: #eab308; --cyan: #06b6d4;
+    --text: #e2e8f0; --text-dim: #64748b; --text-muted: #475569;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif; background: var(--bg);
+    color: var(--text); min-height: 100vh; overflow-x: hidden;
+  }
+
+  .app { position: relative; z-index: 1; }
+
+  /* ─── HEADER ─── */
+  header {
+    background: linear-gradient(180deg, rgba(12,18,32,0.95), rgba(5,8,15,0.9));
+    border-bottom: 1px solid var(--border); backdrop-filter: blur(20px);
+    padding: 16px 32px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .nasa-logo {
+    width: 48px; height: 48px; background: var(--accent); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 11px; letter-spacing: 1px;
+  }
+  .mission-title h1 {
+    font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, #fff, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .mission-title .subtitle {
+    font-size: 12px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase;
+  }
+  .header-center { display: flex; align-items: center; gap: 24px; }
+  .met-display { text-align: center; }
+  .met-label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); }
+  .met-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700;
+    color: var(--green); text-shadow: 0 0 20px var(--green-glow); letter-spacing: 2px;
+  }
+  .status-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 600;
+    color: var(--green); text-transform: uppercase; letter-spacing: 1px;
+  }
+  .status-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 var(--green-glow)} 50%{opacity:.7;box-shadow:0 0 0 6px transparent} }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .data-source { font-size: 11px; color: var(--text-muted); text-align: right; }
+  .data-source a { color: var(--accent); text-decoration: none; }
+
+  /* ─── CREW BAR ─── */
+  .crew-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 12px 32px; display: flex; align-items: center; gap: 32px; overflow-x: auto;
+  }
+  .crew-bar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); white-space: nowrap; font-weight: 600; }
+  .crew-members { display: flex; gap: 24px; }
+  .crew-member { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .crew-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+  .crew-member:nth-child(1) .crew-avatar { background: #1e40af; }
+  .crew-member:nth-child(2) .crew-avatar { background: #7c3aed; }
+  .crew-member:nth-child(3) .crew-avatar { background: #0e7490; }
+  .crew-member:nth-child(4) .crew-avatar { background: #b91c1c; border: 2px solid #fff; }
+  .crew-name { font-size: 13px; font-weight: 500; }
+  .crew-role { font-size: 11px; color: var(--text-dim); }
+
+  /* ─── MAIN GRID ─── */
+  .dashboard { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px; max-width: 1600px; margin: 0 auto; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); font-weight: 600; }
+  .card-badge { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.15); color: var(--accent); border: 1px solid rgba(59,130,246,0.3); }
+  .card-body { padding: 18px; }
+
+  /* ─── TRAJECTORY CANVAS ─── */
+  .trajectory-card { grid-column: 1; grid-row: 1 / 3; min-height: 640px; display: flex; flex-direction: column; }
+  .trajectory-card .card-body { flex: 1; padding: 0; position: relative; background: #020510; }
+  #trajectoryCanvas { width: 100%; height: 100%; display: block; }
+
+  /* ─── ANIMATION CONTROLS ─── */
+  .anim-controls {
+    position: absolute; bottom: 10px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(2,5,16,0.85); backdrop-filter: blur(14px);
+    border: 1px solid rgba(59,130,246,0.15); border-radius: 10px; padding: 7px 12px; z-index: 10;
+  }
+  .anim-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 10px; font-size: 14px; cursor: pointer;
+    white-space: nowrap; transition: all 0.2s; line-height: 1;
+    display: flex; align-items: center; justify-content: center; min-width: 34px;
+  }
+  .anim-btn:hover { background: var(--border); }
+  .anim-btn-accent { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.4); color: var(--accent); font-size: 11px; font-weight: 600; padding: 5px 12px; }
+  .anim-btn-green { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: var(--green); font-size: 11px; font-weight: 600; padding: 5px 12px; }
+  .anim-progress-wrap { flex: 1; height: 6px; background: rgba(26,39,68,0.6); border-radius: 3px; position: relative; cursor: pointer; }
+  .anim-progress-bar { height: 100%; border-radius: 3px; width: 0%; background: linear-gradient(90deg, var(--accent), var(--green)); }
+  .anim-progress-thumb { position: absolute; top: 50%; left: 0%; transform: translate(-50%,-50%); width: 14px; height: 14px; background: var(--green); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 10px var(--green-glow); cursor: grab; }
+  .anim-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--cyan); white-space: nowrap; min-width: 90px; text-align: center; }
+  .anim-speed { display: flex; gap: 2px; }
+  .speed-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; padding: 3px 7px; font-size: 10px; font-family: 'JetBrains Mono', monospace; cursor: pointer; transition: all 0.2s; }
+  .speed-btn:hover { color: var(--text); }
+  .speed-btn.active { background: rgba(59,130,246,0.2); border-color: var(--accent); color: var(--accent); }
+
+  /* ─── TELEMETRY PANEL ─── */
+  .telemetry-panel { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 16px; }
+  .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .telem-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; position: relative; overflow: hidden; }
+  .telem-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .telem-card.blue::before { background: var(--accent); } .telem-card.green::before { background: var(--green); }
+  .telem-card.orange::before { background: var(--orange); } .telem-card.cyan::before { background: var(--cyan); }
+  .telem-card.yellow::before { background: var(--yellow); } .telem-card.red::before { background: var(--red); }
+  .telem-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
+  .telem-value { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .telem-card.blue .telem-value { color: var(--accent); } .telem-card.green .telem-value { color: var(--green); }
+  .telem-card.orange .telem-value { color: var(--orange); } .telem-card.cyan .telem-value { color: var(--cyan); }
+  .telem-card.yellow .telem-value { color: var(--yellow); } .telem-card.red .telem-value { color: var(--red); }
+  .telem-unit { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .telem-card.wide { grid-column: 1 / -1; }
+
+  .attitude-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+  .attitude-item { text-align: center; background: var(--surface2); border-radius: 8px; padding: 12px 8px; border: 1px solid var(--border); }
+  .attitude-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 4px; }
+  .attitude-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 600; color: var(--cyan); }
+  .attitude-bar-wrap { margin-top: 6px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .attitude-bar { height: 100%; background: var(--cyan); border-radius: 2px; transition: width 0.5s ease; }
+
+  .bottom-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .dsn-dishes { display: flex; flex-direction: column; gap: 10px; }
+  .dsn-dish { display: flex; align-items: center; gap: 12px; background: var(--surface2); border-radius: 8px; padding: 12px 14px; border: 1px solid var(--border); }
+  .dsn-icon { font-size: 24px; width: 36px; text-align: center; }
+  .dsn-info { flex: 1; } .dsn-name { font-weight: 600; font-size: 13px; }
+  .dsn-station { font-size: 11px; color: var(--text-dim); }
+  .dsn-stats { display: flex; gap: 12px; margin-top: 4px; }
+  .dsn-stat { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .dsn-stat .val { color: var(--green); }
+  .dsn-signal { display: flex; align-items: center; gap: 4px; }
+  .signal-bar { width: 3px; background: var(--green); border-radius: 1px; }
+
+  .thruster-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
+  .thruster { aspect-ratio: 1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 600; border: 1px solid var(--border); transition: all 0.3s; }
+  .thruster.active { background: rgba(34,197,94,0.2); border-color: var(--green); color: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+  .thruster.inactive { background: var(--surface2); color: var(--text-muted); }
+
+  .timeline { display: flex; flex-direction: column; }
+  .timeline-item { display: flex; gap: 12px; padding: 8px 0; }
+  .timeline-marker { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+  .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); border: 2px solid var(--text-muted); flex-shrink: 0; z-index: 1; }
+  .timeline-line { width: 2px; flex: 1; background: var(--border); min-height: 8px; }
+  .timeline-item.completed .timeline-dot { background: var(--green); border-color: var(--green); }
+  .timeline-item.active .timeline-dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); animation: pulse 2s infinite; }
+  .timeline-item.upcoming .timeline-dot { background: transparent; border-color: var(--text-muted); }
+  .timeline-content { padding-bottom: 4px; }
+  .timeline-title { font-size: 12px; font-weight: 600; }
+  .timeline-item.completed .timeline-title { color: var(--green); }
+  .timeline-item.active .timeline-title { color: var(--accent); }
+  .timeline-item.upcoming .timeline-title { color: var(--text-muted); }
+  .timeline-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  .position-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .pos-item { text-align: center; background: var(--surface2); border-radius: 6px; padding: 10px 6px; border: 1px solid var(--border); }
+  .pos-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+  .pos-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--accent); margin-top: 2px; }
+
+  .saw-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+  .saw-item { text-align: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 4px; }
+  .saw-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .saw-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 600; color: var(--yellow); margin-top: 4px; }
+
+  .loading-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.5s; }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .loading-spinner { width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { margin-top: 16px; font-size: 14px; color: var(--text-dim); letter-spacing: 1px; }
+  .error-banner { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 16px; margin: 16px 32px 0; font-size: 12px; color: var(--red); display: none; }
+  .error-banner.show { display: block; }
+
+  footer { text-align: center; padding: 20px; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); margin-top: 16px; }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 1100px) { .dashboard { grid-template-columns: 1fr; } .trajectory-card { grid-row: 1; min-height: 400px; } .telemetry-panel { grid-column: 1; grid-row: 2; } .bottom-row { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { header { flex-direction: column; gap: 12px; padding: 12px 16px; } .crew-bar { padding: 10px 16px; gap: 16px; } .dashboard { padding: 8px; gap: 8px; } .telemetry-grid { grid-template-columns: 1fr; } .bottom-row { grid-template-columns: 1fr; } .met-value { font-size: 22px; } }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Connecting to Artemis II telemetry…</div>
+</div>
+
+<div class="app">
+  <header>
+    <div class="header-left">
+      <div class="nasa-logo">NASA</div>
+      <div class="mission-title"><h1>Artemis II</h1><div class="subtitle">Crewed Lunar Flyby Mission</div></div>
+    </div>
+    <div class="header-center">
+      <div class="met-display"><div class="met-label">Mission Elapsed Time</div><div class="met-value" id="metValue">T+ --:--:--:--</div></div>
+      <div class="status-badge"><div class="status-dot"></div><span id="missionStatus">Nominal</span></div>
+    </div>
+    <div class="header-right"><div class="data-source">Live telemetry via<br><a href="https://www.nasa.gov/trackartemis/" target="_blank">NASA AROW</a></div></div>
+  </header>
+
+  <div class="crew-bar">
+    <div class="crew-bar-label">Crew</div>
+    <div class="crew-members">
+      <div class="crew-member"><div class="crew-avatar">RW</div><div><div class="crew-name">Reid Wiseman</div><div class="crew-role">Commander</div></div></div>
+      <div class="crew-member"><div class="crew-avatar">VG</div><div><div class="crew-name">Victor Glover</div><div class="crew-role">Pilot</div></div></div>
+      <div class="crew-member"><div class="crew-avatar">CK</div><div><div class="crew-name">Christina Koch</div><div class="crew-role">Mission Specialist</div></div></div>
+      <div class="crew-member"><div class="crew-avatar">JH</div><div><div class="crew-name">Jeremy Hansen</div><div class="crew-role">Mission Specialist · CSA 🇨🇦</div></div></div>
+    </div>
+  </div>
+
+  <div class="error-banner" id="errorBanner">⚠ Unable to reach telemetry API. Retrying…</div>
+
+  <div class="dashboard">
+    <div class="card trajectory-card">
+      <div class="card-header">
+        <span class="card-title">Trajectory — Earth → Moon</span>
+        <span class="card-badge" id="trajectoryBadge">REPLAY</span>
+      </div>
+      <div class="card-body">
+        <canvas id="trajectoryCanvas"></canvas>
+        <div class="anim-controls" id="animControls">
+          <button class="anim-btn" id="btnPlayPause" title="Play / Pause">⏸</button>
+          <div class="anim-progress-wrap" id="progressWrap">
+            <div class="anim-progress-bar" id="progressBar"></div>
+            <div class="anim-progress-thumb" id="progressThumb"></div>
+          </div>
+          <div class="anim-time" id="animTime">T+ 0d 00:00</div>
+          <div class="anim-speed">
+            <button class="speed-btn" data-speed="1">1×</button>
+            <button class="speed-btn active" data-speed="3">3×</button>
+            <button class="speed-btn" data-speed="8">8×</button>
+            <button class="speed-btn" data-speed="20">20×</button>
+          </div>
+          <button class="anim-btn anim-btn-accent" id="btnSkip">⏭ LIVE</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="telemetry-panel">
+      <div class="card"><div class="card-header"><span class="card-title">Flight Telemetry</span><span class="card-badge" id="lastUpdate">--:--:--</span></div>
+        <div class="card-body"><div class="telemetry-grid">
+          <div class="telem-card green"><div class="telem-label">Speed</div><div class="telem-value" id="speedValue">--</div><div class="telem-unit">km/h</div></div>
+          <div class="telem-card blue"><div class="telem-label">Earth Distance</div><div class="telem-value" id="earthDistValue">--</div><div class="telem-unit">km</div></div>
+          <div class="telem-card orange"><div class="telem-label">Moon Distance</div><div class="telem-value" id="moonDistValue">--</div><div class="telem-unit">km</div></div>
+          <div class="telem-card cyan"><div class="telem-label">Altitude</div><div class="telem-value" id="altitudeValue">--</div><div class="telem-unit">km</div></div>
+          <div class="telem-card yellow"><div class="telem-label">Moon-Rel Speed</div><div class="telem-value" id="moonSpeedValue">--</div><div class="telem-unit">km/h</div></div>
+          <div class="telem-card red"><div class="telem-label">G-Force</div><div class="telem-value" id="gForceValue">--</div><div class="telem-unit">g</div></div>
+          <div class="telem-card blue wide"><div class="telem-label">Signal Light-Time</div><div class="telem-value" id="lightTimeValue">--</div><div class="telem-unit">seconds (one-way)</div></div>
+        </div></div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">Orbital Parameters</span></div>
+        <div class="card-body"><div class="telemetry-grid">
+          <div class="telem-card cyan"><div class="telem-label">Periapsis</div><div class="telem-value" id="periapsisValue">--</div><div class="telem-unit">km</div></div>
+          <div class="telem-card orange"><div class="telem-label">Apoapsis</div><div class="telem-value" id="apoapsisValue">--</div><div class="telem-unit">km</div></div>
+        </div></div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">Spacecraft Attitude</span><span class="card-badge" id="scMode">--</span></div>
+        <div class="card-body"><div class="attitude-grid">
+          <div class="attitude-item"><div class="attitude-label">Roll</div><div class="attitude-value" id="rollValue">--°</div><div class="attitude-bar-wrap"><div class="attitude-bar" id="rollBar" style="width:50%"></div></div></div>
+          <div class="attitude-item"><div class="attitude-label">Pitch</div><div class="attitude-value" id="pitchValue">--°</div><div class="attitude-bar-wrap"><div class="attitude-bar" id="pitchBar" style="width:50%"></div></div></div>
+          <div class="attitude-item"><div class="attitude-label">Yaw</div><div class="attitude-value" id="yawValue">--°</div><div class="attitude-bar-wrap"><div class="attitude-bar" id="yawBar" style="width:50%"></div></div></div>
+        </div></div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">Position (J2000 ECI)</span></div>
+        <div class="card-body"><div class="position-grid">
+          <div class="pos-item"><div class="pos-label">X</div><div class="pos-value" id="posX">--</div></div>
+          <div class="pos-item"><div class="pos-label">Y</div><div class="pos-value" id="posY">--</div></div>
+          <div class="pos-item"><div class="pos-label">Z</div><div class="pos-value" id="posZ">--</div></div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="bottom-row">
+      <div class="card"><div class="card-header"><span class="card-title">Deep Space Network</span><span class="card-badge" id="dsnBadge">SIGNAL ACTIVE</span></div>
+        <div class="card-body"><div class="dsn-dishes" id="dsnDishes"><div style="color:var(--text-dim);font-size:12px">Loading…</div></div></div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">RCS Thrusters</span><span class="card-badge" id="thrusterCount">--</span></div>
+        <div class="card-body"><div class="thruster-grid" id="thrusterGrid"></div>
+          <div style="margin-top:16px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;font-weight:600">Solar Array Wings</div><div class="saw-grid" id="sawGrid"></div></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-header"><span class="card-title">Mission Timeline</span></div>
+        <div class="card-body" style="max-height:380px;overflow-y:auto"><div class="timeline" id="timeline"></div></div>
+      </div>
+    </div>
+  </div>
+  <footer>Data sourced from <a href="https://www.nasa.gov/trackartemis/" target="_blank">NASA AROW</a> via community relay. Telemetry updates every 5 s. This is an unofficial tracker.</footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  ARTEMIS II — CINEMATIC MISSION DASHBOARD
+// ═══════════════════════════════════════════════════════════════════
+
+// CORS proxy chain — tries direct first, then fallbacks for GitHub Pages hosting
+const API_BASE = 'https://artemis.cdnspace.ca';
+const CORS_PROXIES = [
+  url => url,                                                     // direct (works with local proxy)
+  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+  url => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+];
+let activeProxy = 0;
+function apiUrl(path) { return CORS_PROXIES[activeProxy](API_BASE + path); }
+const API = { orbit: '/api/orbit', arow: '/api/arow', dsn: '/api/dsn' };
+const LAUNCH_TIME = new Date('2026-04-01T22:35:00Z').getTime();
+const EMD = 384400; // Earth-Moon distance km
+const TOTAL_H = 228;
+
+let orbitData = null, arowData = null, dsnData = null;
+
+// ─── TRAJECTORY WAYPOINTS ───
+const WP = [
+  {x:0,y:0,h:0},{x:1500,y:1200,h:.5},{x:4000,y:3500,h:1},{x:8000,y:7000,h:2},
+  {x:18000,y:14000,h:5},{x:45000,y:24000,h:10},{x:75000,y:32000,h:18},
+  {x:120000,y:37000,h:28},{x:170000,y:38000,h:40},{x:220000,y:36000,h:52},
+  {x:270000,y:30000,h:66},{x:310000,y:23000,h:78},{x:345000,y:15000,h:88},
+  {x:370000,y:8000,h:93},{x:383000,y:3500,h:95},{x:391000,y:500,h:96},
+  {x:393000,y:-3000,h:97},{x:390000,y:-7000,h:98},{x:383000,y:-12000,h:99.5},
+  {x:370000,y:-18000,h:102},{x:345000,y:-25000,h:108},{x:310000,y:-30000,h:116},
+  {x:270000,y:-33000,h:128},{x:220000,y:-34000,h:142},{x:170000,y:-32000,h:156},
+  {x:120000,y:-28000,h:170},{x:75000,y:-21000,h:186},{x:40000,y:-14000,h:200},
+  {x:18000,y:-8000,h:212},{x:6000,y:-3000,h:222},{x:1500,y:-800,h:226},{x:0,y:0,h:228}
+];
+
+// Camera keyframes — cinematic zoom & pan for each phase
+const CAM = [
+  {h:0,   x:8000,   y:5000,   vw:65000},
+  {h:1.5, x:12000,  y:8000,   vw:80000},
+  {h:3,   x:25000,  y:12000,  vw:120000},
+  {h:8,   x:55000,  y:18000,  vw:220000},
+  {h:18,  x:100000, y:22000,  vw:350000},
+  {h:35,  x:170000, y:12000,  vw:500000},
+  {h:75,  x:192000, y:5000,   vw:530000},
+  {h:88,  x:320000, y:8000,   vw:200000},
+  {h:94,  x:378000, y:2000,   vw:80000},   // dramatic Moon zoom
+  {h:96,  x:388000, y:-500,   vw:50000},   // closest approach!
+  {h:99,  x:385000, y:-8000,  vw:70000},
+  {h:106, x:340000, y:-15000, vw:250000},
+  {h:120, x:260000, y:-12000, vw:450000},
+  {h:145, x:192000, y:-5000,  vw:530000},
+  {h:190, x:192000, y:-3000,  vw:530000},
+  {h:210, x:60000,  y:-6000,  vw:200000},
+  {h:222, x:12000,  y:-2000,  vw:80000},
+  {h:228, x:0,      y:0,      vw:50000}
+];
+
+// Milestones for cinematic title cards
+const MILESTONES = [
+  {h:0,   title:'LAUNCH',                    sub:'Kennedy Space Center, Florida'},
+  {h:0.035, title:'SRB SEPARATION',          sub:'Solid Rocket Boosters jettisoned'},
+  {h:2,   title:'TRANS-LUNAR INJECTION',     sub:'Orion is on its way to the Moon'},
+  {h:12,  title:'OUTBOUND COAST',            sub:'Cruising through cislunar space'},
+  {h:96,  title:'LUNAR FLYBY',               sub:'Closest approach — 4,600 km above the Moon'},
+  {h:100, title:'FAR SIDE OF THE MOON',      sub:'Farther from Earth than any human has ever been'},
+  {h:144, title:'RETURN TRANSIT',             sub:'Heading home'},
+  {h:228, title:'SPLASHDOWN',                sub:'Pacific Ocean recovery'}
+];
+
+// ─── SPLINE MATH ───
+function cr(p0,p1,p2,p3,t){const t2=t*t,t3=t2*t;return .5*((-t3+2*t2-t)*p0+(3*t3-5*t2+2)*p1+(-3*t3+4*t2+t)*p2+(t3-t2)*p3)}
+
+function interpKF(kf,h,prop){
+  let i=0;
+  while(i<kf.length-1&&kf[i+1].h<h)i++;
+  if(i>=kf.length-1)i=kf.length-2;
+  const k0=kf[Math.max(0,i-1)],k1=kf[i],k2=kf[Math.min(kf.length-1,i+1)],k3=kf[Math.min(kf.length-1,i+2)];
+  const t=Math.max(0,Math.min(1,(h-k1.h)/(k2.h-k1.h)));
+  return cr(k0[prop],k1[prop],k2[prop],k3[prop],t);
+}
+
+function getTrajectoryPt(h){
+  h=Math.max(0,Math.min(TOTAL_H,h));
+  return{x:interpKF(WP,h,'x'),y:interpKF(WP,h,'y')};
+}
+
+function getCamTarget(h){
+  h=Math.max(0,Math.min(TOTAL_H,h));
+  return{x:interpKF(CAM,h,'x'),y:interpKF(CAM,h,'y'),vw:interpKF(CAM,h,'vw')};
+}
+
+// Dense path for drawing
+const PATH=[];(function(){for(let h=0;h<=TOTAL_H;h+=.15){const p=getTrajectoryPt(h);PATH.push({x:p.x,y:p.y,h})}})();
+
+// ─── STARFIELD ───
+const STARS=[];
+for(let i=0;i<300;i++){
+  STARS.push({
+    x:Math.random(),y:Math.random(),
+    size:.4+Math.random()*1.6,
+    bright:.2+Math.random()*.8,
+    twinkle:.5+Math.random()*4,
+    depth:.1+Math.random()*.9
+  });
+}
+
+// ─── PARTICLE SYSTEM ───
+const particles=[];
+function spawnParticles(cx,cy,count,hue,spread,sizeMax,decayMin,decayMax){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x:cx+(Math.random()-.5)*spread,
+      y:cy+(Math.random()-.5)*spread,
+      vx:(Math.random()-.5)*40,
+      vy:(Math.random()-.5)*40,
+      life:1,
+      decay:decayMin+Math.random()*(decayMax-decayMin),
+      size:.5+Math.random()*sizeMax,
+      hue
+    });
+  }
+}
+
+// ─── ANIMATION STATE ───
+let animMode='replay', animPlaying=true, animMetH=0, animSpeed=3, animLastTs=0;
+let currentLiveMetH=(Date.now()-LAUNCH_TIME)/3600000;
+let isDragging=false;
+let cam={x:8000,y:5000,vw:65000};
+let milestoneActive=null, milestoneTime=0;
+let milestonesShown=new Set();
+const trailPts=[];
+
+// ─── FORMAT ───
+function fmt(n,d=0){if(n==null||isNaN(n))return'--';return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function fmtC(n){if(n==null||isNaN(n))return'--';const a=Math.abs(n);if(a>=1e6)return(n/1e6).toFixed(1)+'M';if(a>=1e3)return(n/1e3).toFixed(1)+'K';return n.toFixed(1)}
+function formatMET(ms){if(ms<0)return'T- --:--:--';const s=Math.floor(ms/1000),d=Math.floor(s/86400),hr=Math.floor(s%86400/3600),mn=Math.floor(s%3600/60),sc=s%60;const p=n=>String(n).padStart(2,'0');return`T+ ${d}d ${p(hr)}:${p(mn)}:${p(sc)}`}
+function fmtShort(h){const d=Math.floor(h/24),hr=Math.floor(h%24),mn=Math.floor((h%1)*60);return`T+ ${d}d ${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}`}
+
+// MET clock
+function updateMET(){document.getElementById('metValue').textContent=formatMET(orbitData?.metMs??(Date.now()-LAUNCH_TIME))}
+setInterval(updateMET,1000);
+
+// ─── API ───
+async function fetchJSON(path){const r=await fetch(apiUrl(path));if(!r.ok)throw new Error(r.status);return r.json()}
+async function fetchAll(){
+  const eb=document.getElementById('errorBanner');
+  try{
+    const[o,a,d]=await Promise.all([fetchJSON(API.orbit),fetchJSON(API.arow),fetchJSON(API.dsn)]);
+    orbitData=o;arowData=a;dsnData=d;eb.classList.remove('show');
+    currentLiveMetH=(o.metMs||(Date.now()-LAUNCH_TIME))/3600000;
+    updateUI();
+  }catch(e){
+    console.warn(`Proxy ${activeProxy} failed:`,e.message);
+    if(activeProxy<CORS_PROXIES.length-1){activeProxy++;console.log('Switching to proxy',activeProxy);fetchAll();return}
+    eb.classList.add('show');
+  }
+}
+
+// ─── UI UPDATE (telemetry panels) ───
+function updateUI(){
+  if(orbitData){
+    document.getElementById('speedValue').textContent=fmt(orbitData.speedKmH,1);
+    document.getElementById('earthDistValue').textContent=fmt(orbitData.earthDistKm,0);
+    document.getElementById('moonDistValue').textContent=fmt(orbitData.moonDistKm,0);
+    document.getElementById('altitudeValue').textContent=fmt(orbitData.altitudeKm,0);
+    document.getElementById('moonSpeedValue').textContent=fmt(orbitData.moonRelSpeedKmH,1);
+    document.getElementById('gForceValue').textContent=(orbitData.gForce??0).toFixed(6);
+    document.getElementById('periapsisValue').textContent=fmt(orbitData.periapsisKm,1);
+    document.getElementById('apoapsisValue').textContent=fmt(orbitData.apoapsisKm,0);
+  }
+  if(arowData){
+    document.getElementById('lastUpdate').textContent=new Date(arowData.timestamp).toLocaleTimeString();
+    if(arowData.eulerDeg){const{roll,pitch,yaw}=arowData.eulerDeg;
+      document.getElementById('rollValue').textContent=roll.toFixed(2)+'°';
+      document.getElementById('pitchValue').textContent=pitch.toFixed(2)+'°';
+      document.getElementById('yawValue').textContent=yaw.toFixed(2)+'°';
+      document.getElementById('rollBar').style.width=((roll+180)/360*100)+'%';
+      document.getElementById('pitchBar').style.width=((pitch+180)/360*100)+'%';
+      document.getElementById('yawBar').style.width=((yaw+180)/360*100)+'%';
+    }
+    if(arowData.signalLightTimeSec!=null)document.getElementById('lightTimeValue').textContent=arowData.signalLightTimeSec.toFixed(3);
+    document.getElementById('scMode').textContent='Mode: '+(arowData.spacecraftMode||'--').toUpperCase();
+    if(arowData.positionKm){
+      document.getElementById('posX').textContent=fmt(arowData.positionKm.x,1)+' km';
+      document.getElementById('posY').textContent=fmt(arowData.positionKm.y,1)+' km';
+      document.getElementById('posZ').textContent=fmt(arowData.positionKm.z,1)+' km';
+    }
+    if(arowData.rcsThrusters?.thrusters)updateThrusters(arowData.rcsThrusters.thrusters);
+    if(arowData.sawAngles)updateSAW(arowData.sawAngles);
+  }
+  if(dsnData)updateDSN(dsnData);
+}
+function updateDSN(d){const c=document.getElementById('dsnDishes'),b=document.getElementById('dsnBadge');b.textContent=d.signalActive?'SIGNAL ACTIVE':'NO SIGNAL';b.style.background=d.signalActive?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';b.style.color=d.signalActive?'var(--green)':'var(--red)';if(!d.dishes?.length){c.innerHTML='<div style="color:var(--text-dim);font-size:12px">No dishes</div>';return}c.innerHTML=d.dishes.map(x=>`<div class="dsn-dish"><div class="dsn-icon">📡</div><div class="dsn-info"><div class="dsn-name">${x.dish}</div><div class="dsn-station">${x.stationName} (${x.station.toUpperCase()})</div><div class="dsn-stats"><div class="dsn-stat">AZ <span class="val">${x.azimuth}°</span></div><div class="dsn-stat">EL <span class="val">${x.elevation}°</span></div><div class="dsn-stat">RTLT <span class="val">${x.rtltSeconds?.toFixed(2)}s</span></div><div class="dsn-stat">↓ <span class="val">${(x.downlinkRate/1e6).toFixed(1)} Mbps</span></div></div></div><div class="dsn-signal">${[1,2,3,4].map(i=>`<div class="signal-bar" style="height:${i*5+4}px;opacity:${x.downlinkActive?1:.2}"></div>`).join('')}</div></div>`).join('')}
+function updateThrusters(t){const g=document.getElementById('thrusterGrid');let ac=0;g.innerHTML=Object.entries(t).map(([n,a])=>{if(a)ac++;return`<div class="thruster ${a?'active':'inactive'}" title="${n}">${n}</div>`}).join('');document.getElementById('thrusterCount').textContent=`${ac} firing`}
+function updateSAW(a){document.getElementById('sawGrid').innerHTML=Object.entries(a).map(([n,v])=>`<div class="saw-item"><div class="saw-label">${n.toUpperCase()}</div><div class="saw-value">${v.toFixed(1)}°</div></div>`).join('')}
+function buildTimeline(){const met=orbitData?.metMs??(Date.now()-LAUNCH_TIME);const mh=met/3600000;const ev=[{t:'Launch — SLS Liftoff',s:0,h:0},{t:'SRB Separation',s:126,h:.035},{t:'Core Stage Separation',s:510,h:.14},{t:'ICPS Perigee Raise',s:3600,h:1},{t:'Trans-Lunar Injection',s:7200,h:2},{t:'ICPS Separation',s:9600,h:2.7},{t:'Outbound Coast',s:43200,h:12},{t:'Lunar Flyby (~4,600 km)',s:345600,h:96},{t:'Far Side of Moon',s:360000,h:100},{t:'Return Transit',s:518400,h:144},{t:'Earth Re-Entry',s:777600,h:216},{t:'Splashdown',s:820800,h:228}];document.getElementById('timeline').innerHTML=ev.map((e,i)=>{let st='upcoming';if(mh>=e.h+1)st='completed';else if(mh>=e.h-1)st='active';return`<div class="timeline-item ${st}"><div class="timeline-marker"><div class="timeline-dot"></div>${i<ev.length-1?'<div class="timeline-line"></div>':''}</div><div class="timeline-content"><div class="timeline-title">${e.t}</div><div class="timeline-time">MET ${e.h<1?(e.s+'s'):(e.h.toFixed(0)+'h')}</div></div></div>`}).join('')}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CINEMATIC CANVAS RENDERER
+// ═══════════════════════════════════════════════════════════════════
+const canvas=document.getElementById('trajectoryCanvas');
+const ctx=canvas.getContext('2d');
+
+function resizeCanvas(){
+  const r=canvas.parentElement.getBoundingClientRect();
+  canvas.width=r.width*devicePixelRatio;canvas.height=r.height*devicePixelRatio;
+  canvas.style.width=r.width+'px';canvas.style.height=r.height+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize',resizeCanvas);
+
+function drawFrame(ts){
+  const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
+
+  // ─── Advance animation ───
+  if(animMode==='replay'&&animPlaying&&!isDragging){
+    if(animLastTs>0){const dt=(ts-animLastTs)/1000;animMetH+=dt*animSpeed;if(animMetH>=currentLiveMetH){animMetH=currentLiveMetH;switchToLive()}}
+  }else if(animMode==='live'){animMetH=currentLiveMetH}
+  animLastTs=ts;
+
+  // Update progress bar
+  const pct=Math.min(100,(animMetH/Math.max(1,currentLiveMetH))*100);
+  document.getElementById('progressBar').style.width=pct+'%';
+  document.getElementById('progressThumb').style.left=pct+'%';
+  document.getElementById('animTime').textContent=fmtShort(animMetH);
+
+  // ─── Camera ───
+  const ct=animMode==='live'?{x:192000,y:0,vw:530000}:getCamTarget(animMetH);
+  const lerpF=1-Math.exp(-2.0*((ts-(animLastTs||ts))/1000||0.016));
+  const smooth=animMode==='live'?0.03:0.045;
+  cam.x+=(ct.x-cam.x)*smooth;cam.y+=(ct.y-cam.y)*smooth;cam.vw+=(ct.vw-cam.vw)*smooth;
+
+  const scale=w/cam.vw;
+  const toX=km=>(km-cam.x)*scale+w/2;
+  const toY=km=>-(km-cam.y)*scale+h/2;
+
+  // ─── Clear + deep space background ───
+  ctx.fillStyle='#020510';ctx.fillRect(0,0,w,h);
+
+  // Subtle nebula glow that moves with camera
+  const nebulaX=toX(192000),nebulaY=toY(5000);
+  const nb=ctx.createRadialGradient(nebulaX,nebulaY,0,nebulaX,nebulaY,w*.6);
+  nb.addColorStop(0,'rgba(30,20,80,0.08)');nb.addColorStop(.5,'rgba(15,25,60,0.04)');nb.addColorStop(1,'transparent');
+  ctx.fillStyle=nb;ctx.fillRect(0,0,w,h);
+
+  // ─── Stars with parallax & twinkle ───
+  STARS.forEach(s=>{
+    const twinkle=.5+.5*Math.sin(ts/1000*s.twinkle+s.x*100);
+    const alpha=s.bright*(.5+twinkle*.5);
+    const px=((s.x*w - cam.x*0.00003*s.depth*w)%w+w)%w;
+    const py=((s.y*h + cam.y*0.00003*s.depth*h)%h+h)%h;
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(px,py,s.size,0,Math.PI*2);ctx.fill();
+    if(s.size>1.2&&twinkle>.7){
+      ctx.globalAlpha=alpha*.3;
+      ctx.fillRect(px-s.size*3,py-.3,s.size*6,.6);
+      ctx.fillRect(px-.3,py-s.size*3,.6,s.size*6);
+    }
+  });
+  ctx.globalAlpha=1;
+
+  // ─── Draw Earth ───
+  const ex=toX(0),ey=toY(0);
+  const er=Math.max(12,6371*scale);
+
+  // Atmosphere glow
+  const atm=ctx.createRadialGradient(ex,ey,er*.7,ex,ey,er*5);
+  atm.addColorStop(0,'rgba(60,140,255,0.25)');atm.addColorStop(.4,'rgba(30,80,200,0.08)');atm.addColorStop(1,'transparent');
+  ctx.fillStyle=atm;ctx.beginPath();ctx.arc(ex,ey,er*5,0,Math.PI*2);ctx.fill();
+
+  const ef=ctx.createRadialGradient(ex-er*.3,ey-er*.3,er*.1,ex,ey,er);
+  ef.addColorStop(0,'#7dc4ff');ef.addColorStop(.3,'#3b8bdb');ef.addColorStop(.7,'#1a5ba0');ef.addColorStop(1,'#0d2847');
+  ctx.fillStyle=ef;ctx.beginPath();ctx.arc(ex,ey,er,0,Math.PI*2);ctx.fill();
+
+  // Atmosphere ring
+  ctx.strokeStyle='rgba(100,180,255,0.15)';ctx.lineWidth=er*.25;
+  ctx.beginPath();ctx.arc(ex,ey,er+er*.12,0,Math.PI*2);ctx.stroke();
+
+  if(er>6){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font=`bold ${Math.min(13,er*.8)}px Inter`;ctx.textAlign='center';ctx.fillText('Earth',ex,ey+er+16)}
+
+  // ─── Draw Moon ───
+  const mx=toX(EMD),my=toY(0);
+  const mr=Math.max(6,1737*scale);
+
+  const mAtm=ctx.createRadialGradient(mx,my,mr*.5,mx,my,mr*3.5);
+  mAtm.addColorStop(0,'rgba(212,197,160,0.15)');mAtm.addColorStop(1,'transparent');
+  ctx.fillStyle=mAtm;ctx.beginPath();ctx.arc(mx,my,mr*3.5,0,Math.PI*2);ctx.fill();
+
+  const mf=ctx.createRadialGradient(mx-mr*.25,my-mr*.25,mr*.1,mx,my,mr);
+  mf.addColorStop(0,'#f0e8d0');mf.addColorStop(.4,'#c8ba92');mf.addColorStop(.8,'#8a7d5a');mf.addColorStop(1,'#5a5030');
+  ctx.fillStyle=mf;ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.fill();
+
+  // Craters (subtle)
+  if(mr>8){
+    ctx.fillStyle='rgba(0,0,0,0.1)';
+    [[.2,-.3,.18],[-.15,.2,.12],[.3,.1,.08]].forEach(([dx,dy,r])=>{
+      ctx.beginPath();ctx.arc(mx+dx*mr,my+dy*mr,r*mr,0,Math.PI*2);ctx.fill();
+    });
+  }
+
+  if(mr>4){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font=`bold ${Math.min(13,mr*.8)}px Inter`;ctx.textAlign='center';ctx.fillText('Moon',mx,my+mr+16)}
+
+  // ─── Full planned path (ghost line) ───
+  ctx.strokeStyle='rgba(100,116,139,0.08)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  ctx.beginPath();
+  PATH.forEach((p,i)=>{const px=toX(p.x),py=toY(p.y);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py)});
+  ctx.stroke();ctx.setLineDash([]);
+
+  // ─── Travelled path with gradient glow ───
+  let tIdx=0;
+  for(let i=0;i<PATH.length;i++){if(PATH[i].h<=animMetH)tIdx=i;else break}
+
+  if(tIdx>1){
+    // Main trail — segmented gradient
+    for(let i=1;i<=tIdx;i++){
+      const prog=i/tIdx;
+      const p0=PATH[i-1],p1=PATH[i];
+      const x0=toX(p0.x),y0=toY(p0.y),x1=toX(p1.x),y1=toY(p1.y);
+
+      // Blue trail
+      ctx.strokeStyle=`rgba(59,130,246,${0.05+prog*0.35})`;
+      ctx.lineWidth=.5+prog*2;
+      ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
+    }
+
+    // Hot leading glow (last ~30 segments)
+    const glowN=Math.min(30,tIdx);
+    ctx.globalCompositeOperation='lighter';
+    for(let i=tIdx-glowN+1;i<=tIdx;i++){
+      if(i<1)continue;
+      const lp=(i-(tIdx-glowN))/(glowN);
+      const p0=PATH[i-1],p1=PATH[i];
+      ctx.strokeStyle=`rgba(34,197,94,${lp*0.3})`;
+      ctx.lineWidth=2+lp*4;
+      ctx.beginPath();ctx.moveTo(toX(p0.x),toY(p0.y));ctx.lineTo(toX(p1.x),toY(p1.y));ctx.stroke();
+    }
+    ctx.globalCompositeOperation='source-over';
+  }
+
+  // ─── Particles update & draw ───
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*0.016;p.y+=p.vy*0.016;p.life-=p.decay;
+    if(p.life<=0){particles.splice(i,1);continue}
+  }
+  // Draw particles
+  ctx.globalCompositeOperation='lighter';
+  particles.forEach(p=>{
+    const a=p.life*.6;
+    const r=p.size*(1+(.5-p.life)*.5);
+    ctx.fillStyle=p.hue===142?`rgba(34,197,94,${a})`:`rgba(120,180,255,${a})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalCompositeOperation='source-over';
+  while(particles.length>200)particles.shift();
+
+  // ─── Orion spacecraft ───
+  let orionKm;
+  if(animMode==='live'&&arowData?.positionKm){
+    orionKm={x:arowData.positionKm.x,y:-arowData.positionKm.y};
+  }else{
+    orionKm=getTrajectoryPt(animMetH);
+  }
+  const ox=toX(orionKm.x),oy=toY(orionKm.y);
+
+  // Comet trail — store canvas positions
+  trailPts.push({x:ox,y:oy,t:ts});
+  while(trailPts.length>50)trailPts.shift();
+
+  // Draw comet tail
+  ctx.globalCompositeOperation='lighter';
+  trailPts.forEach((tp,i)=>{
+    const prog=i/trailPts.length;
+    const age=(ts-tp.t)/2000;
+    const a=Math.max(0,(1-age)*prog*0.5);
+    if(a<=0)return;
+    const sz=1+prog*4;
+    const g=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,sz*2);
+    g.addColorStop(0,`rgba(34,197,94,${a})`);g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(tp.x,tp.y,sz*2,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalCompositeOperation='source-over';
+
+  // Spawn engine particles
+  if(animMode==='replay'&&animPlaying){
+    spawnParticles(ox,oy,2,142,8,2.5,.01,.035);
+    // Extra thrust during burns
+    if(animMetH<3||( animMetH>95&&animMetH<97)){
+      spawnParticles(ox,oy,4,142,12,4,.02,.04);
+      spawnParticles(ox,oy,2,217,6,2,.015,.03);
+    }
+  }
+
+  // Spacecraft glow
+  const ogR=18+Math.sin(ts/300)*4;
+  const og=ctx.createRadialGradient(ox,oy,2,ox,oy,ogR);
+  og.addColorStop(0,'rgba(34,197,94,0.8)');og.addColorStop(.3,'rgba(34,197,94,0.2)');og.addColorStop(1,'transparent');
+  ctx.globalCompositeOperation='lighter';
+  ctx.fillStyle=og;ctx.beginPath();ctx.arc(ox,oy,ogR,0,Math.PI*2);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+
+  // Pulsing ring
+  const pr=8+Math.sin(ts/350)*3;
+  ctx.strokeStyle=`rgba(34,197,94,${.25+Math.sin(ts/350)*.15})`;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(ox,oy,pr,0,Math.PI*2);ctx.stroke();
+
+  // Core dot
+  ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ox,oy,1.5,0,Math.PI*2);ctx.fill();
+
+  // Label
+  ctx.fillStyle='#22c55e';ctx.font='bold 11px Inter';ctx.textAlign='left';
+  ctx.fillText('Orion',ox+14,oy-8);
+
+  // Distance lines (live mode)
+  if(animMode==='live'&&orbitData){
+    ctx.setLineDash([2,4]);ctx.lineWidth=.5;
+    ctx.strokeStyle='rgba(74,158,255,.2)';ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ex,ey);ctx.stroke();
+    ctx.strokeStyle='rgba(249,115,22,.2)';ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(mx,my);ctx.stroke();
+    ctx.setLineDash([]);
+    if(orbitData.earthDistKm){ctx.fillStyle='rgba(74,158,255,.5)';ctx.font='9px JetBrains Mono';ctx.textAlign='center';ctx.fillText(fmtC(orbitData.earthDistKm)+' km',(ox+ex)/2,(oy+ey)/2-6)}
+    if(orbitData.moonDistKm){ctx.fillStyle='rgba(249,115,22,.5)';ctx.font='9px JetBrains Mono';ctx.textAlign='center';ctx.fillText(fmtC(orbitData.moonDistKm)+' km',(ox+mx)/2,(oy+my)/2-6)}
+    if(orbitData.speedKmH){ctx.fillStyle='rgba(34,197,94,.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='left';ctx.fillText(fmt(orbitData.speedKmH,0)+' km/h',ox+14,oy+6)}
+  }
+
+  // ─── Cinematic HUD during replay ───
+  if(animMode==='replay'){
+    // Compute distance from Earth for replay
+    const distE=Math.sqrt(orionKm.x**2+orionKm.y**2);
+    const distM=Math.sqrt((orionKm.x-EMD)**2+orionKm.y**2);
+
+    ctx.save();
+    // Top-left: Earth distance
+    ctx.fillStyle='rgba(74,158,255,0.6)';
+    ctx.font='10px JetBrains Mono';ctx.textAlign='left';
+    ctx.fillText('EARTH DIST',16,30);
+    ctx.font='bold 22px JetBrains Mono';
+    ctx.fillStyle='rgba(74,158,255,0.8)';
+    ctx.fillText(fmtC(distE)+' km',16,54);
+
+    // Top-right: Moon distance
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(249,115,22,0.6)';
+    ctx.font='10px JetBrains Mono';
+    ctx.fillText('MOON DIST',w-16,30);
+    ctx.font='bold 22px JetBrains Mono';
+    ctx.fillStyle='rgba(249,115,22,0.8)';
+    ctx.fillText(fmtC(distM)+' km',w-16,54);
+    ctx.restore();
+  }
+
+  // ─── Milestone title cards ───
+  // Check for new milestones
+  if(animMode==='replay'){
+    for(const ms of MILESTONES){
+      if(!milestonesShown.has(ms.h)&&animMetH>=ms.h){
+        milestonesShown.add(ms.h);
+        milestoneActive=ms;
+        milestoneTime=ts;
+      }
+    }
+  }
+
+  if(milestoneActive){
+    const elapsed=ts-milestoneTime;
+    const dur=3200;
+    if(elapsed>dur){milestoneActive=null}
+    else{
+      let alpha;
+      if(elapsed<500)alpha=elapsed/500;
+      else if(elapsed>dur-600)alpha=(dur-elapsed)/600;
+      else alpha=1;
+
+      ctx.save();ctx.globalAlpha=alpha;
+
+      // Background bar
+      const barY=h*.38;
+      ctx.fillStyle='rgba(2,5,16,0.7)';
+      ctx.fillRect(0,barY-30,w,75);
+
+      // Accent line
+      const lineW=Math.min(w*.6,elapsed/500*w*.6);
+      ctx.fillStyle='rgba(59,130,246,0.6)';
+      ctx.fillRect(w/2-lineW/2,barY-30,lineW,2);
+
+      // Title
+      ctx.fillStyle='#fff';
+      ctx.font='bold 26px Inter';ctx.textAlign='center';ctx.letterSpacing='4px';
+      ctx.fillText(milestoneActive.title,w/2,barY+4);
+
+      // Subtitle
+      ctx.fillStyle='rgba(59,130,246,0.8)';
+      ctx.font='12px Inter';
+      ctx.fillText(milestoneActive.sub,w/2,barY+26);
+
+      // MET
+      ctx.fillStyle='rgba(34,197,94,0.7)';
+      ctx.font='11px JetBrains Mono';
+      ctx.fillText(fmtShort(milestoneActive.h),w/2,barY+43);
+
+      ctx.restore();
+    }
+  }
+
+  // ─── Vignette ───
+  const vig=ctx.createRadialGradient(w/2,h/2,w*.25,w/2,h/2,w*.75);
+  vig.addColorStop(0,'transparent');vig.addColorStop(1,'rgba(2,5,16,0.5)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,w,h);
+
+  requestAnimationFrame(drawFrame);
+}
+
+// ─── CONTROLS ───
+function switchToLive(){
+  animMode='live';animMetH=currentLiveMetH;trailPts.length=0;
+  const b=document.getElementById('trajectoryBadge');b.textContent='LIVE';b.style.background='rgba(34,197,94,.15)';b.style.color='var(--green)';b.style.borderColor='rgba(34,197,94,.3)';
+  document.getElementById('btnSkip').textContent='↩ REPLAY';document.getElementById('btnSkip').className='anim-btn anim-btn-green';
+  document.getElementById('btnPlayPause').textContent='●';document.getElementById('btnPlayPause').style.color='var(--green)';
+}
+function switchToReplay(){
+  animMode='replay';animMetH=0;animPlaying=true;animLastTs=0;trailPts.length=0;particles.length=0;milestonesShown.clear();milestoneActive=null;
+  cam={x:8000,y:5000,vw:65000};
+  const b=document.getElementById('trajectoryBadge');b.textContent='REPLAY';b.style.background='';b.style.color='';b.style.borderColor='';
+  document.getElementById('btnSkip').textContent='⏭ LIVE';document.getElementById('btnSkip').className='anim-btn anim-btn-accent';
+  document.getElementById('btnPlayPause').textContent='⏸';document.getElementById('btnPlayPause').style.color='';
+}
+function setupControls(){
+  document.getElementById('btnPlayPause').addEventListener('click',()=>{if(animMode==='live')return;animPlaying=!animPlaying;document.getElementById('btnPlayPause').textContent=animPlaying?'⏸':'▶';if(animPlaying)animLastTs=0});
+  document.getElementById('btnSkip').addEventListener('click',()=>{animMode==='live'?switchToReplay():switchToLive()});
+  document.querySelectorAll('.speed-btn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.speed-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');animSpeed=Number(b.dataset.speed);animLastTs=0}));
+  const wrap=document.getElementById('progressWrap');
+  function scrub(e){const r=wrap.getBoundingClientRect();const p=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));animMetH=p*currentLiveMetH;if(animMode==='live'){animMode='replay';animPlaying=false;document.getElementById('btnPlayPause').textContent='▶';const b=document.getElementById('trajectoryBadge');b.textContent='REPLAY';b.style.background='';b.style.color='';b.style.borderColor='';document.getElementById('btnSkip').textContent='⏭ LIVE';document.getElementById('btnSkip').className='anim-btn anim-btn-accent';trailPts.length=0;milestonesShown.clear();milestoneActive=null;cam=getCamTarget(animMetH);for(const ms of MILESTONES){if(ms.h<=animMetH)milestonesShown.add(ms.h)}}}
+  wrap.addEventListener('mousedown',e=>{isDragging=true;scrub(e)});
+  window.addEventListener('mousemove',e=>{if(isDragging)scrub(e)});
+  window.addEventListener('mouseup',()=>{if(isDragging){isDragging=false;animLastTs=0}});
+  wrap.addEventListener('touchstart',e=>{isDragging=true;scrub(e.touches[0])},{passive:true});
+  window.addEventListener('touchmove',e=>{if(isDragging)scrub(e.touches[0])},{passive:true});
+  window.addEventListener('touchend',()=>{if(isDragging){isDragging=false;animLastTs=0}});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+async function init(){
+  resizeCanvas();buildTimeline();setupControls();
+  await fetchAll();
+  document.getElementById('loadingOverlay').classList.add('hidden');
+  animMetH=0;animPlaying=true;animLastTs=0;
+  requestAnimationFrame(drawFrame);
+  setInterval(async()=>{await fetchAll();buildTimeline()},5000);
+}
+init();
+</script>
+</body>
+</html>
