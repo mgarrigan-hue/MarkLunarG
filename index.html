@@ -440,7 +440,8 @@ let milestoneActive=null, milestoneTime=0;
 let milestonesShown=new Set();
 const trailPts=[];
 let camShakeX=0, camShakeY=0;
-let letterboxAmt=0; // 0..1 for cinematic bars
+let letterboxAmt=0;
+let userZoom=1; // user scroll zoom multiplier (>1 = zoom in, <1 = zoom out)
 
 // ─── SHOOTING STARS ───
 const shootingStars=[];
@@ -472,9 +473,10 @@ function fmtC(n){if(n==null||isNaN(n))return'--';const a=Math.abs(n);if(a>=1e6)r
 function formatMET(ms){if(ms<0)return'T- --:--:--';const s=Math.floor(ms/1000),d=Math.floor(s/86400),hr=Math.floor(s%86400/3600),mn=Math.floor(s%3600/60),sc=s%60;const p=n=>String(n).padStart(2,'0');return`T+ ${d}d ${p(hr)}:${p(mn)}:${p(sc)}`}
 function fmtShort(h){const d=Math.floor(h/24),hr=Math.floor(h%24),mn=Math.floor((h%1)*60);return`T+ ${d}d ${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}`}
 
-// MET clock
-function updateMET(){document.getElementById('metValue').textContent=formatMET(orbitData?.metMs??(Date.now()-LAUNCH_TIME))}
+// MET clock — always shows real mission time, independent of animation
+function updateMET(){document.getElementById('metValue').textContent=formatMET(Date.now()-LAUNCH_TIME)}
 setInterval(updateMET,1000);
+updateMET();
 
 // ─── API ───
 async function fetchJSON(path){const r=await fetch(apiUrl(path));if(!r.ok)throw new Error(r.status);return r.json()}
@@ -568,8 +570,17 @@ function drawFrame(ts){
   camShakeY+=(shakeTarget.y-camShakeY)*0.3;
 
   // ─── Camera ───
-  const ct=animMode==='live'?{x:192000,y:0,vw:530000}:getCamTarget(animMetH);
-  const smooth=animMode==='live'?0.03:0.045;
+  // In live mode, zoom in close to Orion's position
+  let ct;
+  if(animMode==='live'){
+    const livePos=arowData?.positionKm?{x:arowData.positionKm.x,y:-arowData.positionKm.y}:getTrajectoryPt(animMetH);
+    ct={x:livePos.x,y:livePos.y,vw:120000};
+  }else{
+    ct=getCamTarget(animMetH);
+  }
+  // Apply user zoom
+  ct.vw=ct.vw/userZoom;
+  const smooth=animMode==='live'?0.04:0.045;
   cam.x+=(ct.x-cam.x)*smooth;cam.y+=(ct.y-cam.y)*smooth;cam.vw+=(ct.vw-cam.vw)*smooth;
 
   const scale=w/cam.vw;
@@ -626,19 +637,48 @@ function drawFrame(ts){
   }
   ctx.globalCompositeOperation='source-over';ctx.lineCap='butt';
 
-  // ─── Draw Earth ───
+  // ─── Draw Earth (realistic) ───
   const ex=toX(0),ey=toY(0);
   const er=Math.max(12,6371*scale);
 
-  const atm=ctx.createRadialGradient(ex,ey,er*.7,ex,ey,er*5);
-  atm.addColorStop(0,'rgba(60,140,255,0.25)');atm.addColorStop(.4,'rgba(30,80,200,0.08)');atm.addColorStop(1,'transparent');
-  ctx.fillStyle=atm;ctx.beginPath();ctx.arc(ex,ey,er*5,0,Math.PI*2);ctx.fill();
+  // Outer atmospheric glow
+  const atm=ctx.createRadialGradient(ex,ey,er*.8,ex,ey,er*6);
+  atm.addColorStop(0,'rgba(60,160,255,0.25)');atm.addColorStop(.3,'rgba(40,100,220,0.10)');atm.addColorStop(.6,'rgba(20,60,150,0.04)');atm.addColorStop(1,'transparent');
+  ctx.fillStyle=atm;ctx.beginPath();ctx.arc(ex,ey,er*6,0,Math.PI*2);ctx.fill();
 
-  const ef=ctx.createRadialGradient(ex-er*.3,ey-er*.3,er*.1,ex,ey,er);
-  ef.addColorStop(0,'#7dc4ff');ef.addColorStop(.3,'#3b8bdb');ef.addColorStop(.7,'#1a5ba0');ef.addColorStop(1,'#0d2847');
-  ctx.fillStyle=ef;ctx.beginPath();ctx.arc(ex,ey,er,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='rgba(100,180,255,0.15)';ctx.lineWidth=er*.25;
-  ctx.beginPath();ctx.arc(ex,ey,er+er*.12,0,Math.PI*2);ctx.stroke();
+  ctx.save();
+  ctx.beginPath();ctx.arc(ex,ey,er,0,Math.PI*2);ctx.clip();
+  // Ocean base
+  const ocean=ctx.createRadialGradient(ex-er*.2,ey-er*.3,er*.1,ex,ey,er*1.1);
+  ocean.addColorStop(0,'#5b9bd5');ocean.addColorStop(.3,'#2b6cb0');ocean.addColorStop(.6,'#1a4d80');ocean.addColorStop(1,'#0a2540');
+  ctx.fillStyle=ocean;ctx.fillRect(ex-er,ey-er,er*2,er*2);
+  // Land masses
+  ctx.fillStyle='#2d8a4e';
+  ctx.beginPath();ctx.ellipse(ex-er*.25,ey-er*.1,er*.22,er*.45,-.2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#3a9e5c';
+  ctx.beginPath();ctx.ellipse(ex+er*.2,ey-er*.15,er*.15,er*.35,.1,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#2d8a4e';
+  ctx.beginPath();ctx.ellipse(ex+er*.45,ey-er*.2,er*.25,er*.25,.3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#c8dbe8';
+  ctx.beginPath();ctx.ellipse(ex,ey+er*.75,er*.6,er*.18,0,0,Math.PI*2);ctx.fill();
+  // Cloud wisps
+  ctx.fillStyle='rgba(255,255,255,0.18)';
+  ctx.beginPath();ctx.ellipse(ex-er*.3,ey-er*.35,er*.4,er*.08,.3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(ex+er*.15,ey+er*.15,er*.35,er*.06,-.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(ex+er*.3,ey-er*.4,er*.25,er*.05,.5,0,Math.PI*2);ctx.fill();
+  // Specular highlight
+  const spec=ctx.createRadialGradient(ex-er*.35,ey-er*.35,er*.05,ex-er*.2,ey-er*.2,er*.7);
+  spec.addColorStop(0,'rgba(255,255,255,0.35)');spec.addColorStop(.4,'rgba(255,255,255,0.08)');spec.addColorStop(1,'transparent');
+  ctx.fillStyle=spec;ctx.fillRect(ex-er,ey-er,er*2,er*2);
+  // Terminator
+  const term=ctx.createLinearGradient(ex+er*.3,ey-er,ex+er*1.1,ey+er);
+  term.addColorStop(0,'transparent');term.addColorStop(.5,'rgba(0,5,20,0.3)');term.addColorStop(1,'rgba(0,5,20,0.65)');
+  ctx.fillStyle=term;ctx.fillRect(ex-er,ey-er,er*2,er*2);
+  ctx.restore();
+
+  // Atmosphere rim
+  ctx.strokeStyle='rgba(100,180,255,0.2)';ctx.lineWidth=Math.max(1.5,er*.08);
+  ctx.beginPath();ctx.arc(ex,ey,er+er*.04,0,Math.PI*2);ctx.stroke();
 
   // Earth lens flare
   if(er>10){
@@ -657,19 +697,57 @@ function drawFrame(ts){
 
   if(er>6){ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font=`bold ${Math.min(13,er*.8)}px Inter`;ctx.textAlign='center';ctx.fillText('Earth',ex,ey+er+16)}
 
-  // ─── Draw Moon ───
+  // ─── Draw Moon (realistic) ───
   const mx=toX(EMD),my=toY(0);
   const mr=Math.max(6,1737*scale);
 
-  const mAtm=ctx.createRadialGradient(mx,my,mr*.5,mx,my,mr*3.5);
-  mAtm.addColorStop(0,'rgba(212,197,160,0.15)');mAtm.addColorStop(1,'transparent');
-  ctx.fillStyle=mAtm;ctx.beginPath();ctx.arc(mx,my,mr*3.5,0,Math.PI*2);ctx.fill();
+  // Subtle outer glow
+  const mAtm=ctx.createRadialGradient(mx,my,mr*.5,mx,my,mr*4);
+  mAtm.addColorStop(0,'rgba(220,210,180,0.12)');mAtm.addColorStop(.5,'rgba(180,170,140,0.04)');mAtm.addColorStop(1,'transparent');
+  ctx.fillStyle=mAtm;ctx.beginPath();ctx.arc(mx,my,mr*4,0,Math.PI*2);ctx.fill();
 
-  const mf=ctx.createRadialGradient(mx-mr*.25,my-mr*.25,mr*.1,mx,my,mr);
-  mf.addColorStop(0,'#f0e8d0');mf.addColorStop(.4,'#c8ba92');mf.addColorStop(.8,'#8a7d5a');mf.addColorStop(1,'#5a5030');
-  ctx.fillStyle=mf;ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.fill();
+  ctx.save();
+  ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.clip();
 
-  if(mr>8){ctx.fillStyle='rgba(0,0,0,0.1)';[[.2,-.3,.18],[-.15,.2,.12],[.3,.1,.08]].forEach(([dx,dy,r])=>{ctx.beginPath();ctx.arc(mx+dx*mr,my+dy*mr,r*mr,0,Math.PI*2);ctx.fill()})}
+  // Base surface — maria (dark basalt seas) and highlands
+  const mBase=ctx.createRadialGradient(mx-mr*.2,my-mr*.2,mr*.05,mx,my,mr*1.1);
+  mBase.addColorStop(0,'#d8d0b8');mBase.addColorStop(.3,'#c0b898');mBase.addColorStop(.6,'#a89878');mBase.addColorStop(1,'#706050');
+  ctx.fillStyle=mBase;ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
+
+  // Dark maria (lava plains)
+  ctx.fillStyle='rgba(80,75,60,0.35)';
+  ctx.beginPath();ctx.ellipse(mx-mr*.15,my-mr*.2,mr*.3,mr*.2,-.3,0,Math.PI*2);ctx.fill(); // Mare Imbrium
+  ctx.fillStyle='rgba(70,65,50,0.3)';
+  ctx.beginPath();ctx.ellipse(mx+mr*.2,my-mr*.05,mr*.2,mr*.25,.2,0,Math.PI*2);ctx.fill(); // Mare Serenitatis
+  ctx.fillStyle='rgba(75,70,55,0.25)';
+  ctx.beginPath();ctx.ellipse(mx-mr*.05,my+mr*.15,mr*.25,mr*.15,.1,0,Math.PI*2);ctx.fill(); // Mare Tranquillitatis
+
+  // Craters — multiple sizes
+  const craters=[[.25,-.35,.12],[-.2,.25,.09],[.35,.15,.07],[-.1,-.45,.06],[.4,-.2,.08],[-.35,-.1,.05],[.15,.4,.1],[-.3,.35,.04],[.05,-.15,.14],[-.4,.1,.06]];
+  craters.forEach(([dx,dy,cr])=>{
+    const cx=mx+dx*mr,cy=my+dy*mr,crad=cr*mr;
+    // Crater rim (light)
+    ctx.strokeStyle='rgba(200,190,170,0.25)';ctx.lineWidth=Math.max(.5,crad*.15);
+    ctx.beginPath();ctx.arc(cx,cy,crad,0,Math.PI*2);ctx.stroke();
+    // Crater floor (dark)
+    ctx.fillStyle='rgba(60,55,45,0.2)';
+    ctx.beginPath();ctx.arc(cx,cy,crad*.8,0,Math.PI*2);ctx.fill();
+    // Shadow inside
+    ctx.fillStyle='rgba(40,35,25,0.15)';
+    ctx.beginPath();ctx.arc(cx+crad*.15,cy+crad*.1,crad*.6,0,Math.PI*2);ctx.fill();
+  });
+
+  // Specular highlight
+  const mSpec=ctx.createRadialGradient(mx-mr*.3,my-mr*.3,mr*.05,mx-mr*.15,my-mr*.15,mr*.8);
+  mSpec.addColorStop(0,'rgba(255,255,245,0.3)');mSpec.addColorStop(.3,'rgba(255,255,240,0.08)');mSpec.addColorStop(1,'transparent');
+  ctx.fillStyle=mSpec;ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
+
+  // Terminator
+  const mTerm=ctx.createLinearGradient(mx+mr*.2,my-mr,mx+mr*1.2,my+mr);
+  mTerm.addColorStop(0,'transparent');mTerm.addColorStop(.4,'rgba(0,0,0,0.2)');mTerm.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle=mTerm;ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
+
+  ctx.restore();
 
   // Moon lens flare
   if(mr>8){
@@ -927,13 +1005,13 @@ function drawFrame(ts){
 
 // ─── CONTROLS ───
 function switchToLive(){
-  animMode='live';animMetH=currentLiveMetH;trailPts.length=0;
+  animMode='live';animMetH=currentLiveMetH;trailPts.length=0;userZoom=1;
   const b=document.getElementById('trajectoryBadge');b.textContent='LIVE';b.style.background='rgba(34,197,94,.15)';b.style.color='var(--green)';b.style.borderColor='rgba(34,197,94,.3)';
   document.getElementById('btnSkip').textContent='↩ REPLAY';document.getElementById('btnSkip').className='anim-btn anim-btn-green';
   document.getElementById('btnPlayPause').textContent='●';document.getElementById('btnPlayPause').style.color='var(--green)';
 }
 function switchToReplay(){
-  animMode='replay';animMetH=0;animPlaying=true;animLastTs=0;trailPts.length=0;particles.length=0;milestonesShown.clear();milestoneActive=null;
+  animMode='replay';animMetH=0;animPlaying=true;animLastTs=0;trailPts.length=0;particles.length=0;milestonesShown.clear();milestoneActive=null;userZoom=1;
   cam={x:8000,y:5000,vw:65000};
   const b=document.getElementById('trajectoryBadge');b.textContent='REPLAY';b.style.background='';b.style.color='';b.style.borderColor='';
   document.getElementById('btnSkip').textContent='⏭ LIVE';document.getElementById('btnSkip').className='anim-btn anim-btn-accent';
@@ -951,6 +1029,13 @@ function setupControls(){
   wrap.addEventListener('touchstart',e=>{isDragging=true;scrub(e.touches[0])},{passive:true});
   window.addEventListener('touchmove',e=>{if(isDragging)scrub(e.touches[0])},{passive:true});
   window.addEventListener('touchend',()=>{if(isDragging){isDragging=false;animLastTs=0}});
+
+  // Mouse wheel zoom on canvas
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const zoomDelta=e.deltaY>0?0.85:1.18;
+    userZoom=Math.max(0.15,Math.min(10,userZoom*zoomDelta));
+  },{passive:false});
 }
 
 // ═══════════════════════════════════════════════════════════════════
