@@ -90,13 +90,13 @@
 
   /* ─── TRAJECTORY CANVAS ─── */
   .trajectory-card { grid-column: 1; grid-row: 1; min-height: 422px; max-height: 475px; display: flex; flex-direction: column; align-self: start; }
-  .trajectory-card .card-body { flex: 1; padding: 0; position: relative; background: #020510; }
-  #trajectoryCanvas { width: 100%; height: 100%; display: block; }
+  .trajectory-card .card-body { flex: 1; padding: 0; position: relative; background: #020510; overflow: hidden; touch-action: none; }
+  #trajectoryCanvas { width: 100%; height: 100%; display: block; touch-action: none; }
 
   /* ─── ANIMATION CONTROLS ─── */
   .anim-controls {
     position: absolute; bottom: 10px; left: 12px; right: 12px;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     background: rgba(2,5,16,0.85); backdrop-filter: blur(14px);
     border: 1px solid rgba(59,130,246,0.15); border-radius: 10px; padding: 7px 12px; z-index: 10;
   }
@@ -195,8 +195,29 @@
   footer { text-align: center; padding: 20px; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); margin-top: 16px; }
   footer a { color: var(--accent); text-decoration: none; }
 
-  @media (max-width: 1100px) { .dashboard { grid-template-columns: 1fr; } .trajectory-card { grid-row: 1; min-height: 260px; max-height: 300px; } .telemetry-panel { grid-column: 1; grid-row: 2; } .bottom-row { grid-template-columns: 1fr; } }
-  @media (max-width: 700px) { header { flex-direction: column; gap: 12px; padding: 12px 16px; } .crew-bar { padding: 10px 16px; gap: 16px; } .dashboard { padding: 8px; gap: 8px; } .telemetry-grid { grid-template-columns: 1fr; } .bottom-row { grid-template-columns: 1fr; } .met-value { font-size: 22px; } }
+  @media (max-width: 1100px) {
+    .dashboard { grid-template-columns: 1fr; }
+    .trajectory-card { grid-row: 1; min-height: 300px; max-height: 380px; }
+    .telemetry-panel { grid-column: 1; grid-row: 2; }
+    .bottom-row { grid-column: 1; grid-row: 3; grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    header { flex-direction: column; gap: 10px; padding: 10px 16px; }
+    .crew-bar { padding: 8px 12px; gap: 12px; }
+    .crew-bar-label { display: none; }
+    .dashboard { padding: 6px; gap: 6px; }
+    .trajectory-card { min-height: 55vw; max-height: 70vw; }
+    .telemetry-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .telem-card { padding: 10px; }
+    .telem-value { font-size: 18px; }
+    .bottom-row { grid-template-columns: 1fr; }
+    .met-value { font-size: 20px; }
+    .anim-controls { gap: 4px; padding: 5px 8px; bottom: 6px; left: 6px; right: 6px; }
+    .anim-btn { padding: 4px 8px; font-size: 12px; min-width: 28px; }
+    .anim-time { font-size: 9px; min-width: 70px; }
+    .speed-btn { padding: 2px 5px; font-size: 9px; }
+    .anim-progress-thumb { width: 18px; height: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -402,9 +423,14 @@ function getCamTarget(h){
 // Dense path for drawing
 const PATH=[];(function(){for(let h=0;h<=TOTAL_H;h+=.15){const p=getTrajectoryPt(h);PATH.push({x:p.x,y:p.y,h})}})();
 
+// ─── DEVICE DETECTION ───
+const isMobile=window.innerWidth<768||('ontouchstart' in window);
+const dpr=Math.min(devicePixelRatio,isMobile?2:3);
+
 // ─── STARFIELD ───
+const STAR_COUNT=isMobile?150:300;
 const STARS=[];
-for(let i=0;i<300;i++){
+for(let i=0;i<STAR_COUNT;i++){
   STARS.push({
     x:Math.random(),y:Math.random(),
     size:.4+Math.random()*1.6,
@@ -543,14 +569,14 @@ const ctx=canvas.getContext('2d');
 
 function resizeCanvas(){
   const r=canvas.parentElement.getBoundingClientRect();
-  canvas.width=r.width*devicePixelRatio;canvas.height=r.height*devicePixelRatio;
+  canvas.width=r.width*dpr;canvas.height=r.height*dpr;
   canvas.style.width=r.width+'px';canvas.style.height=r.height+'px';
-  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 window.addEventListener('resize',resizeCanvas);
 
 function drawFrame(ts){
-  const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
+  const w=canvas.width/dpr, h=canvas.height/dpr;
 
   // ─── Advance animation ───
   if(animMode==='replay'&&animPlaying&&!isDragging){
@@ -808,7 +834,8 @@ function drawFrame(ts){
     ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
   });
   ctx.globalCompositeOperation='source-over';
-  while(particles.length>200)particles.shift();
+  const MAX_PARTICLES=isMobile?80:200;
+  while(particles.length>MAX_PARTICLES)particles.shift();
 
   // ─── Orion spacecraft ───
   let orionKm;
@@ -1001,23 +1028,26 @@ function drawFrame(ts){
     ctx.fillText(fmt(orbitData.speedKmH,0)+' km/h',ox+14,oy+6);
   }
 
-  // ─── Cinematic HUD during replay ───
+  // ─── Cinematic HUD during replay (responsive) ───
   if(animMode==='replay'){
+    const hudS=Math.max(8,Math.min(12,w/80)); // scale labels to canvas width
+    const hudV=Math.max(14,Math.min(22,w/45));
+    const pad=Math.max(10,w*.02);
     ctx.save();
-    ctx.fillStyle='rgba(74,158,255,0.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='left';
-    ctx.fillText('EARTH DIST',16,30);
-    ctx.font='bold 22px JetBrains Mono';ctx.fillStyle='rgba(74,158,255,0.8)';
-    ctx.fillText(fmtC(distE)+' km',16,54);
-    ctx.textAlign='right';ctx.fillStyle='rgba(249,115,22,0.6)';ctx.font='10px JetBrains Mono';
-    ctx.fillText('MOON DIST',w-16,30);
-    ctx.font='bold 22px JetBrains Mono';ctx.fillStyle='rgba(249,115,22,0.8)';
-    ctx.fillText(fmtC(distM)+' km',w-16,54);
+    ctx.fillStyle='rgba(74,158,255,0.6)';ctx.font=`${hudS}px JetBrains Mono`;ctx.textAlign='left';
+    ctx.fillText('EARTH DIST',pad,hudS*2);
+    ctx.font=`bold ${hudV}px JetBrains Mono`;ctx.fillStyle='rgba(74,158,255,0.8)';
+    ctx.fillText(fmtC(distE)+' km',pad,hudS*2+hudV+2);
+    ctx.textAlign='right';ctx.fillStyle='rgba(249,115,22,0.6)';ctx.font=`${hudS}px JetBrains Mono`;
+    ctx.fillText('MOON DIST',w-pad,hudS*2);
+    ctx.font=`bold ${hudV}px JetBrains Mono`;ctx.fillStyle='rgba(249,115,22,0.8)';
+    ctx.fillText(fmtC(distM)+' km',w-pad,hudS*2+hudV+2);
     // Speed HUD center
-    ctx.textAlign='center';ctx.fillStyle='rgba(34,197,94,0.5)';ctx.font='10px JetBrains Mono';
-    ctx.fillText('SPEED',w/2,30);
+    ctx.textAlign='center';ctx.fillStyle='rgba(34,197,94,0.5)';ctx.font=`${hudS}px JetBrains Mono`;
+    ctx.fillText('SPEED',w/2,hudS*2);
     const spdKmh=Math.sqrt((tIdx>0?((PATH[tIdx].x-(PATH[Math.max(0,tIdx-1)].x))**2+(PATH[tIdx].y-(PATH[Math.max(0,tIdx-1)].y))**2):0))/Math.max(.01,PATH[tIdx]?.h-PATH[Math.max(0,tIdx-1)]?.h||.01)*3600/1000;
-    ctx.font='bold 20px JetBrains Mono';ctx.fillStyle='rgba(34,197,94,0.7)';
-    ctx.fillText(fmtC(Math.abs(distE>1?spdKmh:0))+' km/h',w/2,50);
+    ctx.font=`bold ${hudV-2}px JetBrains Mono`;ctx.fillStyle='rgba(34,197,94,0.7)';
+    ctx.fillText(fmtC(Math.abs(distE>1?spdKmh:0))+' km/h',w/2,hudS*2+hudV);
     ctx.restore();
   }
 
@@ -1041,37 +1071,37 @@ function drawFrame(ts){
       else if(elapsed>dur-700)alpha=(dur-elapsed)/700;
       else alpha=1;
 
+      // Responsive font sizes for milestone cards
+      const msTitleSz=Math.max(16,Math.min(28,w/28));
+      const msSubSz=Math.max(10,Math.min(13,w/60));
+      const msMetSz=Math.max(9,Math.min(11,w/70));
+      const msCountSz=Math.max(8,Math.min(10,w/80));
+      const barH=Math.max(60,Math.min(85,h*.15));
+
       ctx.save();ctx.globalAlpha=alpha;
 
-      // Frosted glass bar
       const barY=h*.38;
-      const barH=85;
       const frost=ctx.createLinearGradient(0,barY-35,0,barY+barH-35);
       frost.addColorStop(0,'rgba(8,12,30,0.8)');frost.addColorStop(.5,'rgba(12,18,40,0.85)');frost.addColorStop(1,'rgba(8,12,30,0.8)');
       ctx.fillStyle=frost;ctx.fillRect(0,barY-35,w,barH);
 
-      // Top & bottom accent lines (animated width)
       const lineW=Math.min(w*.65,elapsed/500*w*.65);
       ctx.fillStyle='rgba(59,130,246,0.5)';ctx.fillRect(w/2-lineW/2,barY-35,lineW,1.5);
       ctx.fillStyle='rgba(59,130,246,0.3)';ctx.fillRect(w/2-lineW/2,barY+barH-36,lineW,1);
 
-      // Milestone counter
       const msIdx=MILESTONES.indexOf(milestoneActive);
-      ctx.fillStyle='rgba(100,116,139,0.6)';ctx.font='10px JetBrains Mono';ctx.textAlign='center';
+      ctx.fillStyle='rgba(100,116,139,0.6)';ctx.font=`${msCountSz}px JetBrains Mono`;ctx.textAlign='center';
       ctx.fillText(`${msIdx+1} OF ${MILESTONES.length}`,w/2,barY-20);
 
-      // Icon + Title
       const icon=msIcons[milestoneActive.title]||'✦';
-      ctx.fillStyle='#fff';ctx.font='bold 28px Inter';ctx.textAlign='center';
+      ctx.fillStyle='#fff';ctx.font=`bold ${msTitleSz}px Inter`;ctx.textAlign='center';
       ctx.fillText(icon+'  '+milestoneActive.title,w/2,barY+8);
 
-      // Subtitle
-      ctx.fillStyle='rgba(59,130,246,0.85)';ctx.font='13px Inter';
-      ctx.fillText(milestoneActive.sub,w/2,barY+30);
+      ctx.fillStyle='rgba(59,130,246,0.85)';ctx.font=`${msSubSz}px Inter`;
+      ctx.fillText(milestoneActive.sub,w/2,barY+8+msTitleSz*.8);
 
-      // MET
-      ctx.fillStyle='rgba(34,197,94,0.7)';ctx.font='11px JetBrains Mono';
-      ctx.fillText(fmtShort(milestoneActive.h),w/2,barY+47);
+      ctx.fillStyle='rgba(34,197,94,0.7)';ctx.font=`${msMetSz}px JetBrains Mono`;
+      ctx.fillText(fmtShort(milestoneActive.h),w/2,barY+8+msTitleSz*.8+msSubSz+6);
 
       ctx.restore();
     }
