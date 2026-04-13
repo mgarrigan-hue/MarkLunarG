@@ -20,19 +20,21 @@ An interactive, cinematic retrospective of NASA's **Artemis II** crewed lunar fl
 
 ## Features
 
-- 🎬 **Cinematic trajectory replay** — animated from launch to splashdown with dynamic camera zoom/pan
+- 🌍 **3D cinematic mode** — Three.js WebGL scene with NASA Blue Marble textured Earth, Moon, 8,000 stars, and 3D Orion spacecraft (toggle 🗺️ MAP / 🌍 3D)
+- 🎬 **2D trajectory replay** — animated from launch to splashdown with dynamic camera zoom/pan
+- 🚀 **Spacecraft staging** — SLS full stack → Orion + ICPS → Orion capsule, visually transitioning at SRB and ICPS separation
 - 🎊 **Splashdown celebration** — confetti particle effect at mission completion
 - 📊 **Peak mission data** — all key telemetry values from the mission
-- 🌍 **Full trajectory visualization** — parallax starfield, comet-trail particles, milestone title cards
 - 🏆 **Mission achievements** — historic firsts and records
 - ⏱️ **Complete mission timeline** — 10 milestones from launch to splashdown
 - 📚 **Mission facts** — SLS thrust, heat shield temps, crew cabin specs, and more
 
 ## How It Works
 
-A single `index.html` file — no build tools, no frameworks, no dependencies. Uses:
+A single `index.html` file — no build tools, no bundlers. Uses:
 
-- **Canvas API** for the cinematic trajectory rendering
+- **Three.js** (r149 via CDN) for the 3D cinematic Earth/Moon/spacecraft scene
+- **Canvas API** for the 2D trajectory rendering and HUD overlays
 - **Catmull-Rom splines** for smooth trajectory & camera interpolation
 - **Particle system** for comet-trail, engine burn, and celebration effects
 - **Hardcoded mission data** — no external API dependencies
@@ -44,6 +46,7 @@ A single `index.html` file — no build tools, no frameworks, no dependencies. U
 | ⏸ / ▶ | Pause / resume replay |
 | Progress bar | Click or drag to scrub to any point |
 | 1× 3× 8× 20× | Playback speed (8× default) |
+| 🗺️ MAP / 🌍 3D | Toggle between 2D map and 3D cinematic view |
 | ↩ REPLAY | Restart the journey from launch |
 
 ## Run Locally
