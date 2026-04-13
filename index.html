@@ -630,39 +630,129 @@ function drawBody(x,y,radius,type,ts){
   }
 }
 
-// ─── DRAW ORION ───
-function drawOrion(x,y,sz,ts,rot){
+// ─── DRAW ORION — stage-aware spacecraft rendering ───
+// stage: 'sls' (launch stack with SRBs), 'icps' (upper stage + Orion), 'orion' (capsule + service module)
+function drawOrion(x,y,sz,ts,rot,stage){
   ctx.save();ctx.translate(x,y);ctx.rotate(rot);
   if(sz>12){
-    var s=sz,smW=s*.4,smH=s*.85;
-    ctx.fillStyle='#3a3d42';ctx.fillRect(-smW/2,s*.05,smW,smH);
-    ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=.5;
-    for(var i=1;i<4;i++){var ly=s*.05+smH*i/4;ctx.beginPath();ctx.moveTo(-smW/2,ly);ctx.lineTo(smW/2,ly);ctx.stroke()}
-    ctx.fillStyle='#555';ctx.beginPath();ctx.moveTo(-smW*.3,s*.05+smH);ctx.lineTo(smW*.3,s*.05+smH);ctx.lineTo(smW*.4,s*.05+smH+s*.1);ctx.lineTo(-smW*.4,s*.05+smH+s*.1);ctx.closePath();ctx.fill();
-    ctx.globalCompositeOperation='lighter';
-    var eg=ctx.createRadialGradient(0,s*.05+smH+s*.1,0,0,s*.05+smH+s*.1,s*.3);
-    eg.addColorStop(0,'rgba(255,140,30,0.35)');eg.addColorStop(.5,'rgba(255,80,20,0.12)');eg.addColorStop(1,'transparent');
-    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(0,s*.05+smH+s*.1,s*.3,0,Math.PI*2);ctx.fill();
-    ctx.globalCompositeOperation='source-over';
-    var sawLen=s*1.1,sawW=s*.15;
-    ctx.fillStyle='#1a3a6a';
-    [-1,1].forEach(function(side){
-      var sx=side*smW/2;
-      ctx.fillRect(sx+(side<0?-sawLen:0),s*.25-sawW/2,sawLen,sawW);
-      ctx.fillRect(sx+(side<0?-sawLen:0),s*.25+sawW*.4,sawLen,sawW);
-      ctx.strokeStyle='rgba(100,180,255,0.1)';ctx.lineWidth=.4;
-      for(var g=0;g<5;g++){var gx=sx+(side<0?-sawLen:0)+sawLen*g/4;ctx.beginPath();ctx.moveTo(gx,s*.25-sawW/2);ctx.lineTo(gx,s*.25+sawW*1.4);ctx.stroke()}
-    });
-    ctx.fillStyle='#c8c0b0';ctx.beginPath();ctx.moveTo(-smW*.5,s*.05);ctx.lineTo(smW*.5,s*.05);ctx.lineTo(smW*.18,-s*.32);ctx.lineTo(-smW*.18,-s*.32);ctx.closePath();ctx.fill();
-    ctx.fillStyle='#8b7355';ctx.beginPath();ctx.moveTo(-smW*.2,-s*.32);ctx.quadraticCurveTo(0,-s*.44,smW*.2,-s*.32);ctx.fill();
-    ctx.fillStyle='rgba(80,200,255,0.6)';ctx.beginPath();ctx.arc(-smW*.1,-s*.14,s*.035,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(smW*.1,-s*.14,s*.035,0,Math.PI*2);ctx.fill();
-    var hl=ctx.createLinearGradient(0,-s*.35,0,s*.05);hl.addColorStop(0,'rgba(255,255,255,0.12)');hl.addColorStop(1,'transparent');
-    ctx.fillStyle=hl;ctx.beginPath();ctx.moveTo(-smW*.5,s*.05);ctx.lineTo(smW*.5,s*.05);ctx.lineTo(smW*.18,-s*.32);ctx.lineTo(-smW*.18,-s*.32);ctx.closePath();ctx.fill();
+    var s=sz;
+
+    if(stage==='sls'){
+      // ── SLS FULL STACK: Core stage + SRBs + ICPS + Orion ──
+      var coreW=s*.3, coreH=s*1.6;
+      // Core stage (orange tank)
+      ctx.fillStyle='#c46820';ctx.fillRect(-coreW/2,s*.1,coreW,coreH);
+      // Tank banding
+      ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.lineWidth=.5;
+      for(var i=1;i<6;i++){var ly=s*.1+coreH*i/6;ctx.beginPath();ctx.moveTo(-coreW/2,ly);ctx.lineTo(coreW/2,ly);ctx.stroke()}
+      // RS-25 engines
+      ctx.fillStyle='#444';
+      [-1,0,1].forEach(function(ex){ctx.beginPath();ctx.arc(ex*coreW*.3,s*.1+coreH+s*.04,s*.04,0,Math.PI*2);ctx.fill()});
+      // Engine glow
+      ctx.globalCompositeOperation='lighter';
+      var eg=ctx.createRadialGradient(0,s*.1+coreH+s*.08,0,0,s*.1+coreH+s*.08,s*.5);
+      eg.addColorStop(0,'rgba(255,180,40,0.5)');eg.addColorStop(.3,'rgba(255,100,20,0.25)');eg.addColorStop(1,'transparent');
+      ctx.fillStyle=eg;ctx.beginPath();ctx.arc(0,s*.1+coreH+s*.08,s*.5,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+      // SRBs (two solid rocket boosters)
+      var srbW=s*.15,srbH=coreH*1.05,srbOff=coreW/2+srbW*.6;
+      ctx.fillStyle='#e8e0d0';
+      [-1,1].forEach(function(side){
+        var sx=side*srbOff;
+        ctx.fillRect(sx-srbW/2,s*.15,srbW,srbH);
+        // SRB nose cone
+        ctx.beginPath();ctx.moveTo(sx-srbW/2,s*.15);ctx.lineTo(sx,s*.15-s*.12);ctx.lineTo(sx+srbW/2,s*.15);ctx.closePath();ctx.fill();
+        // SRB nozzle
+        ctx.fillStyle='#666';ctx.fillRect(sx-srbW*.35,s*.15+srbH,srbW*.7,s*.06);ctx.fillStyle='#e8e0d0';
+        // SRB exhaust
+        ctx.globalCompositeOperation='lighter';
+        var sg=ctx.createRadialGradient(sx,s*.15+srbH+s*.06,0,sx,s*.15+srbH+s*.06,s*.35);
+        sg.addColorStop(0,'rgba(255,200,50,0.45)');sg.addColorStop(.4,'rgba(255,120,20,0.2)');sg.addColorStop(1,'transparent');
+        ctx.fillStyle=sg;ctx.beginPath();ctx.arc(sx,s*.15+srbH+s*.06,s*.35,0,Math.PI*2);ctx.fill();
+        ctx.globalCompositeOperation='source-over';ctx.fillStyle='#e8e0d0';
+      });
+      // ICPS upper stage (on top of core)
+      var icpsW=coreW*.85,icpsH=s*.35;
+      ctx.fillStyle='#d0c8b8';ctx.fillRect(-icpsW/2,s*.1-icpsH,icpsW,icpsH);
+      // Orion capsule (on top) — simplified at this scale
+      var capW=icpsW*.9,capH=s*.2;
+      ctx.fillStyle='#c8c0b0';ctx.beginPath();ctx.moveTo(-capW/2,s*.1-icpsH);ctx.lineTo(capW/2,s*.1-icpsH);ctx.lineTo(capW*.35,s*.1-icpsH-capH);ctx.lineTo(-capW*.35,s*.1-icpsH-capH);ctx.closePath();ctx.fill();
+      // LAS tower
+      ctx.strokeStyle='#888';ctx.lineWidth=Math.max(.5,s*.02);
+      ctx.beginPath();ctx.moveTo(0,s*.1-icpsH-capH);ctx.lineTo(0,s*.1-icpsH-capH-s*.15);ctx.stroke();
+      // Specular
+      var hl=ctx.createLinearGradient(-coreW,0,coreW*.3,0);hl.addColorStop(0,'rgba(255,255,255,0.08)');hl.addColorStop(1,'transparent');
+      ctx.fillStyle=hl;ctx.fillRect(-coreW/2-srbOff-srbW/2,s*.1,coreW+srbOff*2+srbW,coreH);
+
+    }else if(stage==='icps'){
+      // ── ICPS + ORION: Upper stage before separation ──
+      var icW=s*.35,icH=s*.6;
+      ctx.fillStyle='#d0c8b8';ctx.fillRect(-icW/2,s*.15,icW,icH);
+      ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=.5;
+      for(var i=1;i<3;i++){var ly=s*.15+icH*i/3;ctx.beginPath();ctx.moveTo(-icW/2,ly);ctx.lineTo(icW/2,ly);ctx.stroke()}
+      // Engine
+      ctx.fillStyle='#555';ctx.beginPath();ctx.arc(0,s*.15+icH+s*.03,s*.04,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation='lighter';
+      var eg2=ctx.createRadialGradient(0,s*.15+icH+s*.05,0,0,s*.15+icH+s*.05,s*.3);
+      eg2.addColorStop(0,'rgba(100,160,255,0.4)');eg2.addColorStop(.5,'rgba(50,100,255,0.15)');eg2.addColorStop(1,'transparent');
+      ctx.fillStyle=eg2;ctx.beginPath();ctx.arc(0,s*.15+icH+s*.05,s*.3,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+      // Orion on top
+      var smW=s*.4,smH=s*.45;
+      ctx.fillStyle='#3a3d42';ctx.fillRect(-smW/2,s*.15-smH,smW,smH);
+      // Solar arrays (deployed)
+      var sawLen=s*.8,sawW=s*.1;
+      ctx.fillStyle='#1a3a6a';
+      [-1,1].forEach(function(side){
+        var sx=side*smW/2;
+        ctx.fillRect(sx+(side<0?-sawLen:0),s*.15-smH*.5-sawW/2,sawLen,sawW);
+      });
+      // Crew module
+      ctx.fillStyle='#c8c0b0';ctx.beginPath();ctx.moveTo(-smW*.5,s*.15-smH);ctx.lineTo(smW*.5,s*.15-smH);ctx.lineTo(smW*.18,s*.15-smH-s*.2);ctx.lineTo(-smW*.18,s*.15-smH-s*.2);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#8b7355';ctx.beginPath();ctx.moveTo(-smW*.2,s*.15-smH-s*.2);ctx.quadraticCurveTo(0,s*.15-smH-s*.28,smW*.2,s*.15-smH-s*.2);ctx.fill();
+      // Windows
+      ctx.fillStyle='rgba(80,200,255,0.6)';ctx.beginPath();ctx.arc(-smW*.1,s*.15-smH-s*.08,s*.025,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(smW*.1,s*.15-smH-s*.08,s*.025,0,Math.PI*2);ctx.fill();
+
+    }else{
+      // ── ORION CAPSULE + SERVICE MODULE (free flight) ──
+      var smW=s*.4,smH=s*.85;
+      ctx.fillStyle='#3a3d42';ctx.fillRect(-smW/2,s*.05,smW,smH);
+      ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=.5;
+      for(var i=1;i<4;i++){var ly=s*.05+smH*i/4;ctx.beginPath();ctx.moveTo(-smW/2,ly);ctx.lineTo(smW/2,ly);ctx.stroke()}
+      ctx.fillStyle='#555';ctx.beginPath();ctx.moveTo(-smW*.3,s*.05+smH);ctx.lineTo(smW*.3,s*.05+smH);ctx.lineTo(smW*.4,s*.05+smH+s*.1);ctx.lineTo(-smW*.4,s*.05+smH+s*.1);ctx.closePath();ctx.fill();
+      ctx.globalCompositeOperation='lighter';
+      var eg3=ctx.createRadialGradient(0,s*.05+smH+s*.1,0,0,s*.05+smH+s*.1,s*.3);
+      eg3.addColorStop(0,'rgba(255,140,30,0.35)');eg3.addColorStop(.5,'rgba(255,80,20,0.12)');eg3.addColorStop(1,'transparent');
+      ctx.fillStyle=eg3;ctx.beginPath();ctx.arc(0,s*.05+smH+s*.1,s*.3,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+      var sawLen=s*1.1,sawW=s*.15;
+      ctx.fillStyle='#1a3a6a';
+      [-1,1].forEach(function(side){
+        var sx=side*smW/2;
+        ctx.fillRect(sx+(side<0?-sawLen:0),s*.25-sawW/2,sawLen,sawW);
+        ctx.fillRect(sx+(side<0?-sawLen:0),s*.25+sawW*.4,sawLen,sawW);
+        ctx.strokeStyle='rgba(100,180,255,0.1)';ctx.lineWidth=.4;
+        for(var g=0;g<5;g++){var gx=sx+(side<0?-sawLen:0)+sawLen*g/4;ctx.beginPath();ctx.moveTo(gx,s*.25-sawW/2);ctx.lineTo(gx,s*.25+sawW*1.4);ctx.stroke()}
+      });
+      ctx.fillStyle='#c8c0b0';ctx.beginPath();ctx.moveTo(-smW*.5,s*.05);ctx.lineTo(smW*.5,s*.05);ctx.lineTo(smW*.18,-s*.32);ctx.lineTo(-smW*.18,-s*.32);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#8b7355';ctx.beginPath();ctx.moveTo(-smW*.2,-s*.32);ctx.quadraticCurveTo(0,-s*.44,smW*.2,-s*.32);ctx.fill();
+      ctx.fillStyle='rgba(80,200,255,0.6)';ctx.beginPath();ctx.arc(-smW*.1,-s*.14,s*.035,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(smW*.1,-s*.14,s*.035,0,Math.PI*2);ctx.fill();
+      var hl=ctx.createLinearGradient(0,-s*.35,0,s*.05);hl.addColorStop(0,'rgba(255,255,255,0.12)');hl.addColorStop(1,'transparent');
+      ctx.fillStyle=hl;ctx.beginPath();ctx.moveTo(-smW*.5,s*.05);ctx.lineTo(smW*.5,s*.05);ctx.lineTo(smW*.18,-s*.32);ctx.lineTo(-smW*.18,-s*.32);ctx.closePath();ctx.fill();
+    }
   }else{
+    // Tiny dot when zoomed out
     ctx.fillStyle='#22c55e';ctx.beginPath();ctx.arc(0,0,Math.max(3,sz*.5),0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,0,Math.max(1,sz*.2),0,Math.PI*2);ctx.fill();
   }
   ctx.restore();
+}
+
+// Get spacecraft stage based on mission elapsed time
+function getStage(metH){
+  if(metH<0.035) return 'sls';   // Before SRB separation
+  if(metH<2.7)   return 'icps';  // Before ICPS separation
+  return 'orion';                 // Free-flight Orion
 }
 
 // ─── GET TRAJECTORY ROTATION from tangent ───
@@ -708,10 +798,12 @@ function drawFrame(ts){
   document.getElementById('animTime').textContent=fmtShort(animMetH);
 
   // Camera
-  var isBurn=(animMetH<3)||(animMetH>95&&animMetH<97.5)||(animMetH>224);
+  var isBurn=animPlaying&&((animMetH<3)||(animMetH>95&&animMetH<97.5)||(animMetH>224));
   var shake=isBurn?(animMetH<3?1.2:(animMetH>224?1.5:2)):0;
-  camShakeX+=((Math.random()-.5)*shake*2-camShakeX)*.3;
-  camShakeY+=((Math.random()-.5)*shake*2-camShakeY)*.3;
+  if(!animPlaying){shake=0;camShakeX*=.85;camShakeY*=.85}else{
+    camShakeX+=((Math.random()-.5)*shake*2-camShakeX)*.3;
+    camShakeY+=((Math.random()-.5)*shake*2-camShakeY)*.3;
+  }
 
   var ct=getCamTarget(animMetH);
   ct.vw/=userZoom;ct.x+=userPanX;ct.y+=userPanY;
@@ -737,8 +829,8 @@ function drawFrame(ts){
     if(s.size>1.1&&tw>.75){ctx.globalAlpha=a*.25;ctx.fillRect(px-s.size*2.5,py-.3,s.size*5,.6);ctx.fillRect(px-.3,py-s.size*2.5,.6,s.size*5)}
   });ctx.globalAlpha=1;
 
-  // Shooting stars
-  nextSS-=16;if(nextSS<=0){var ang=Math.random()*Math.PI*2,spd2=300+Math.random()*400;shootingStars.push({x:Math.random(),y:Math.random(),vx:Math.cos(ang)*spd2,vy:Math.sin(ang)*spd2,life:1,decay:.5+Math.random()*.7,size:.6+Math.random()*1});nextSS=6000+Math.random()*12000}
+  // Shooting stars (only spawn new ones while playing)
+  if(animPlaying){nextSS-=16;if(nextSS<=0){var ang=Math.random()*Math.PI*2,spd2=300+Math.random()*400;shootingStars.push({x:Math.random(),y:Math.random(),vx:Math.cos(ang)*spd2,vy:Math.sin(ang)*spd2,life:1,decay:.5+Math.random()*.7,size:.6+Math.random()*1});nextSS=6000+Math.random()*12000}}
   ctx.globalCompositeOperation='lighter';
   for(var i=shootingStars.length-1;i>=0;i--){var ss=shootingStars[i];ss.x+=ss.vx/w*.016;ss.y+=ss.vy/h*.016;ss.life-=ss.decay*.016;if(ss.life<=0){shootingStars.splice(i,1);continue}var sx=ss.x*w,sy=ss.y*h,tl=35+ss.size*15,an=Math.atan2(ss.vy,ss.vx);var g=ctx.createLinearGradient(sx,sy,sx-Math.cos(an)*tl,sy-Math.sin(an)*tl);g.addColorStop(0,'rgba(255,255,255,'+ss.life*.8+')');g.addColorStop(1,'transparent');ctx.strokeStyle=g;ctx.lineWidth=ss.size;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-Math.cos(an)*tl,sy-Math.sin(an)*tl);ctx.stroke()}
   ctx.globalCompositeOperation='source-over';ctx.lineCap='butt';
@@ -802,12 +894,14 @@ function drawFrame(ts){
   // Draw spacecraft with rotation from trajectory tangent
   var scSize=Math.max(5,Math.min(55,w/cam.vw*10000));
   var scRot=getTrajectoryAngle(animMetH);
-  drawOrion(ox,oy,scSize,ts,scRot);
+  var scStage=getStage(animMetH);
+  drawOrion(ox,oy,scSize,ts,scRot,scStage);
 
   // Label
   var lbl=scSize>12?scSize*1.2+6:14;
+  var scLabel=scStage==='sls'?'SLS':scStage==='icps'?'Orion + ICPS':'Orion';
   ctx.fillStyle='#22c55e';ctx.font='bold '+Math.max(9,Math.min(12,w/70))+'px Inter';ctx.textAlign='left';
-  ctx.fillText('Orion',ox+lbl,oy-4);
+  ctx.fillText(scLabel,ox+lbl,oy-4);
 
   // Distance tethers
   var distE=Math.sqrt(orionKm.x**2+orionKm.y**2),distM=Math.sqrt((orionKm.x-EMD)**2+orionKm.y**2);
