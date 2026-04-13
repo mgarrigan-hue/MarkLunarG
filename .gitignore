@@ -4,3 +4,7 @@ Thumbs.db
 server.js
 build.js
 renderer.js
+sora-clips/
+artemis2_cinematic.mp4
+package.json
+package-lock.json

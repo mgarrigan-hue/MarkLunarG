@@ -187,6 +187,18 @@
   .fact-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); font-weight: 500; }
   .fact-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--cyan); margin-top: 4px; }
 
+  /* ─── 3D / VIDEO MODE ─── */
+  .video-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; display: none; background: #020510; }
+  .video-layer.active { display: block; }
+  #trajectoryCanvas.video-active { display: none; }
+  #hudCanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
+  #hudCanvas.active { display: block; }
+  .mode-toggle { position: absolute; top: 10px; right: 12px; z-index: 10; display: flex; gap: 2px; }
+  .mode-btn { background: rgba(2,5,16,0.75); backdrop-filter: blur(10px); border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: all 0.2s; }
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active { background: rgba(245,158,11,0.2); border-color: rgba(245,158,11,0.4); color: var(--gold); }
+  #threeContainer canvas { width: 100% !important; height: 100% !important; }
+
   .loading-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.8s; }
   .loading-overlay.hidden { opacity: 0; pointer-events: none; }
   .loading-spinner { width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
@@ -282,7 +294,13 @@
         <span class="card-badge" id="trajectoryBadge">REPLAY</span>
       </div>
       <div class="card-body">
+        <div id="threeContainer" class="video-layer"></div>
         <canvas id="trajectoryCanvas"></canvas>
+        <canvas id="hudCanvas"></canvas>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="btnModeCanvas" title="Interactive 2D trajectory map">🗺️ MAP</button>
+          <button class="mode-btn" id="btnMode3D" title="3D cinematic view">🌍 3D</button>
+        </div>
         <div class="anim-controls" id="animControls">
           <button class="anim-btn" id="btnPlayPause" title="Play / Pause">⏸</button>
           <div class="anim-progress-wrap" id="progressWrap">
@@ -359,6 +377,7 @@
   <footer>Artemis II mission data archived from <a href="https://www.nasa.gov/trackartemis/" target="_blank">NASA AROW</a>. This is an unofficial retrospective tracker celebrating humanity's return to the Moon.</footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 //  ARTEMIS II — POST-MISSION RETROSPECTIVE DASHBOARD
@@ -1003,9 +1022,335 @@ function setupControls(){
 
 
 // ═══════════════════════════════════════════════════════════════════
+//  3D CINEMATIC MODE (Three.js)
+// ═══════════════════════════════════════════════════════════════════
+
+let mode3D=false;
+let threeScene,threeCamera,threeRenderer,threeEarth,threeMoon,threeOrion,threeTrailLine;
+let threeStars,threeSunLight;
+let threeInited=false;
+const SCALE3D=1/10000; // 1 unit = 10,000 km
+const EARTH_R=6371*SCALE3D;
+const MOON_R=1737*SCALE3D;
+const EMD3D=EMD*SCALE3D;
+
+const hudCanvas=document.getElementById('hudCanvas');
+const hudCtx=hudCanvas.getContext('2d');
+
+function resizeHudCanvas(){
+  var r=hudCanvas.parentElement.getBoundingClientRect();
+  hudCanvas.width=r.width*dpr;hudCanvas.height=r.height*dpr;
+  hudCanvas.style.width=r.width+'px';hudCanvas.style.height=r.height+'px';
+  hudCtx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function initThree(){
+  if(threeInited) return;
+  threeInited=true;
+  var container=document.getElementById('threeContainer');
+  var rect=container.getBoundingClientRect();
+  var w=rect.width||800, h=rect.height||400;
+
+  // Scene
+  threeScene=new THREE.Scene();
+  threeScene.background=new THREE.Color(0x020510);
+
+  // Camera
+  threeCamera=new THREE.PerspectiveCamera(50,w/h,0.001,500);
+  threeCamera.position.set(0,0.5,2);
+
+  // Renderer
+  threeRenderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  threeRenderer.setSize(w,h);
+  threeRenderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  threeRenderer.toneMapping=THREE.ACESFilmicToneMapping;
+  threeRenderer.toneMappingExposure=1.2;
+  threeRenderer.outputEncoding=THREE.sRGBEncoding;
+  container.appendChild(threeRenderer.domElement);
+
+  // Lighting
+  var ambient=new THREE.AmbientLight(0x1a2040,0.3);
+  threeScene.add(ambient);
+  threeSunLight=new THREE.DirectionalLight(0xfff8f0,2.5);
+  threeSunLight.position.set(-50,10,30);
+  threeScene.add(threeSunLight);
+
+  // ── EARTH ──
+  var earthGeo=new THREE.SphereGeometry(EARTH_R,64,64);
+  var earthMat=new THREE.MeshPhongMaterial({
+    color:0x2266aa, emissive:0x112244, emissiveIntensity:0.1,
+    specular:0x444444, shininess:25
+  });
+  threeEarth=new THREE.Mesh(earthGeo,earthMat);
+  threeScene.add(threeEarth);
+
+  // Earth atmosphere glow
+  var atmosGeo=new THREE.SphereGeometry(EARTH_R*1.025,48,48);
+  var atmosMat=new THREE.MeshPhongMaterial({
+    color:0x4488ff, transparent:true, opacity:0.15,
+    side:THREE.BackSide
+  });
+  var atmos=new THREE.Mesh(atmosGeo,atmosMat);
+  threeScene.add(atmos);
+
+  // Earth outer glow (larger, softer)
+  var glowGeo=new THREE.SphereGeometry(EARTH_R*1.15,32,32);
+  var glowMat=new THREE.MeshBasicMaterial({
+    color:0x3366cc, transparent:true, opacity:0.06,
+    side:THREE.BackSide
+  });
+  threeScene.add(new THREE.Mesh(glowGeo,glowMat));
+
+  // ── MOON ──
+  var moonGeo=new THREE.SphereGeometry(MOON_R,48,48);
+  var moonMat=new THREE.MeshPhongMaterial({
+    color:0xa89878, specular:0x222222, shininess:5
+  });
+  threeMoon=new THREE.Mesh(moonGeo,moonMat);
+  threeMoon.position.set(EMD3D,0,0);
+  threeScene.add(threeMoon);
+
+  // Moon glow
+  var mGlowGeo=new THREE.SphereGeometry(MOON_R*1.08,24,24);
+  var mGlowMat=new THREE.MeshBasicMaterial({
+    color:0xddd0b8, transparent:true, opacity:0.05,
+    side:THREE.BackSide
+  });
+  var mGlow=new THREE.Mesh(mGlowGeo,mGlowMat);
+  mGlow.position.copy(threeMoon.position);
+  threeScene.add(mGlow);
+
+  // ── STARS ──
+  var starCount=isMobile?3000:8000;
+  var starGeo=new THREE.BufferGeometry();
+  var starPos=new Float32Array(starCount*3);
+  var starSizes=new Float32Array(starCount);
+  for(var i=0;i<starCount;i++){
+    var theta=Math.random()*Math.PI*2;
+    var phi=Math.acos(2*Math.random()-1);
+    var r2=150+Math.random()*200;
+    starPos[i*3]=r2*Math.sin(phi)*Math.cos(theta);
+    starPos[i*3+1]=r2*Math.sin(phi)*Math.sin(theta);
+    starPos[i*3+2]=r2*Math.cos(phi);
+    starSizes[i]=0.05+Math.random()*0.25;
+  }
+  starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
+  starGeo.setAttribute('size',new THREE.BufferAttribute(starSizes,1));
+  var starMat=new THREE.PointsMaterial({color:0xffffff,size:0.15,sizeAttenuation:true,transparent:true,opacity:0.8});
+  threeStars=new THREE.Points(starGeo,starMat);
+  threeScene.add(threeStars);
+
+  // ── TRAJECTORY PATH (ghost) ──
+  var pathPts=[];
+  for(var i=0;i<PATH.length;i+=3){
+    pathPts.push(new THREE.Vector3(PATH[i].x*SCALE3D,0,-PATH[i].y*SCALE3D));
+  }
+  var ghostGeo=new THREE.BufferGeometry().setFromPoints(pathPts);
+  var ghostMat=new THREE.LineBasicMaterial({color:0x334466,transparent:true,opacity:0.2});
+  threeScene.add(new THREE.Line(ghostGeo,ghostMat));
+
+  // ── TRAIL LINE (animated) ──
+  var maxTrailPts=pathPts.length;
+  var trailGeo=new THREE.BufferGeometry();
+  var trailPositions=new Float32Array(maxTrailPts*3);
+  trailGeo.setAttribute('position',new THREE.BufferAttribute(trailPositions,3));
+  trailGeo.setDrawRange(0,0);
+  var trailMat=new THREE.LineBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.6});
+  threeTrailLine=new THREE.Line(trailGeo,trailMat);
+  threeScene.add(threeTrailLine);
+
+  // ── ORION SPACECRAFT ──
+  var orionGroup=new THREE.Group();
+  // Service module
+  var smGeo=new THREE.CylinderGeometry(0.015,0.015,0.04,8);
+  var smMat=new THREE.MeshPhongMaterial({color:0x3a3d42,specular:0x222222});
+  var sm=new THREE.Mesh(smGeo,smMat);
+  orionGroup.add(sm);
+  // Crew module
+  var cmGeo=new THREE.ConeGeometry(0.018,0.025,8);
+  var cmMat=new THREE.MeshPhongMaterial({color:0xc8c0b0,specular:0x444444,shininess:30});
+  var cm=new THREE.Mesh(cmGeo,cmMat);
+  cm.position.y=0.032;
+  orionGroup.add(cm);
+  // Solar arrays
+  var sawGeo=new THREE.PlaneGeometry(0.08,0.008);
+  var sawMat=new THREE.MeshPhongMaterial({color:0x1a3a6a,specular:0x336699,shininess:50,side:THREE.DoubleSide});
+  var saw1=new THREE.Mesh(sawGeo,sawMat);saw1.position.set(0.05,0.01,0);orionGroup.add(saw1);
+  var saw2=new THREE.Mesh(sawGeo,sawMat);saw2.position.set(-0.05,0.01,0);orionGroup.add(saw2);
+  // Engine glow
+  var glowSprite=new THREE.SpriteMaterial({color:0x22c55e,transparent:true,opacity:0.6});
+  var glow=new THREE.Sprite(glowSprite);
+  glow.scale.set(0.03,0.03,1);glow.position.y=-0.025;
+  orionGroup.add(glow);
+  threeOrion=orionGroup;
+  threeScene.add(threeOrion);
+
+  // Load Earth texture (NASA Blue Marble from CDN)
+  var texLoader=new THREE.TextureLoader();
+  texLoader.load('https://unpkg.com/three-globe@2.31.3/example/img/earth-blue-marble.jpg',
+    function(tex){tex.encoding=THREE.sRGBEncoding;threeEarth.material.map=tex;threeEarth.material.color.set(0xffffff);threeEarth.material.needsUpdate=true},
+    undefined,function(){console.log('Earth texture fallback to procedural')}
+  );
+  texLoader.load('https://unpkg.com/three-globe@2.31.3/example/img/earth-topology.png',
+    function(tex){threeEarth.material.bumpMap=tex;threeEarth.material.bumpScale=0.02;threeEarth.material.needsUpdate=true},
+    undefined,function(){}
+  );
+  // Moon texture
+  texLoader.load('https://unpkg.com/three-globe@2.31.3/example/img/earth-topology.png',
+    function(tex){threeMoon.material.map=tex;threeMoon.material.color.set(0xcccccc);threeMoon.material.needsUpdate=true},
+    undefined,function(){}
+  );
+}
+
+function update3DScene(metH){
+  if(!threeInited) return;
+  var pos=getTrajectoryPt(Math.min(metH,TOTAL_H));
+  var px=pos.x*SCALE3D, pz=-pos.y*SCALE3D;
+
+  // Update Orion position
+  threeOrion.position.set(px,0,pz);
+  // Orient Orion along trajectory
+  var dt=0.1;
+  var ahead=getTrajectoryPt(Math.min(metH+dt,TOTAL_H));
+  var dx=ahead.x-pos.x,dy=ahead.y-pos.y;
+  if(Math.abs(dx)>0.01||Math.abs(dy)>0.01){
+    threeOrion.rotation.y=Math.atan2(dx,-dy);
+  }
+
+  // Update trail
+  var trailAttr=threeTrailLine.geometry.attributes.position;
+  var count=0;
+  for(var i=0;i<PATH.length;i+=3){
+    if(PATH[i].h>metH) break;
+    trailAttr.array[count*3]=PATH[i].x*SCALE3D;
+    trailAttr.array[count*3+1]=0;
+    trailAttr.array[count*3+2]=-PATH[i].y*SCALE3D;
+    count++;
+  }
+  trailAttr.needsUpdate=true;
+  threeTrailLine.geometry.setDrawRange(0,count);
+
+  // Cinematic camera
+  var camActs3D=getCamTarget(metH);
+  var targetX=camActs3D.x*SCALE3D;
+  var targetZ=-camActs3D.y*SCALE3D;
+  var dist=camActs3D.vw*SCALE3D*0.0015;
+  dist=Math.max(0.3,Math.min(80,dist));
+
+  // Camera follows the spacecraft with offset
+  var camX=px+(targetX-px)*0.3;
+  var camZ=pz+(targetZ-pz)*0.3;
+  var camY=dist*0.4;
+
+  threeCamera.position.lerp(new THREE.Vector3(camX,camY,camZ+dist*0.7),0.04);
+  var lookAt=new THREE.Vector3(px,0,pz);
+  // Blend look-at between spacecraft and midpoint for wider context
+  var midX=(px)*0.6+targetX*0.4;
+  var midZ=(pz)*0.6+targetZ*0.4;
+  lookAt.set(midX,0,midZ);
+  threeCamera.lookAt(lookAt);
+
+  // Slow Earth rotation
+  threeEarth.rotation.y+=0.0003;
+}
+
+function render3D(){
+  if(!mode3D||!threeInited) return;
+  var container=document.getElementById('threeContainer');
+  var rect=container.getBoundingClientRect();
+  if(threeRenderer.domElement.width!==rect.width||threeRenderer.domElement.height!==rect.height){
+    threeRenderer.setSize(rect.width,rect.height);
+    threeCamera.aspect=rect.width/rect.height;
+    threeCamera.updateProjectionMatrix();
+  }
+  update3DScene(animMetH);
+  threeRenderer.render(threeScene,threeCamera);
+
+  // Draw HUD overlay
+  drawHud3D();
+  requestAnimationFrame(render3D);
+}
+
+function drawHud3D(){
+  var w=hudCanvas.width/dpr,h=hudCanvas.height/dpr;
+  hudCtx.clearRect(0,0,w,h);
+  var metH=animMetH;
+  var orionKm=getTrajectoryPt(Math.min(metH,TOTAL_H));
+  var distE=Math.sqrt(orionKm.x**2+orionKm.y**2);
+  var distM=Math.sqrt((orionKm.x-EMD)**2+orionKm.y**2);
+
+  var tIdx=0;for(var i=0;i<PATH.length;i++){if(PATH[i].h<=metH)tIdx=i;else break}
+  var spdDisplay=0;
+  if(tIdx>0){var sp0=PATH[Math.max(0,tIdx-1)],sp1=PATH[tIdx];var sdh=Math.max(.001,sp1.h-sp0.h);spdDisplay=Math.sqrt((sp1.x-sp0.x)**2+(sp1.y-sp0.y)**2)/sdh}
+
+  var hs=Math.max(8,Math.min(11,w/80)),hv=Math.max(14,Math.min(22,w/45)),pad=Math.max(12,w*.02);
+
+  hudCtx.fillStyle='rgba(2,5,16,0.45)';hudCtx.fillRect(0,0,w,hs*3.5);hudCtx.fillRect(0,h-hs*2.5,w,hs*2.5);
+
+  hudCtx.fillStyle='rgba(74,158,255,0.6)';hudCtx.font=hs+'px JetBrains Mono';hudCtx.textAlign='left';hudCtx.fillText('EARTH',pad,hs*1.5);
+  hudCtx.font='bold '+hv+'px JetBrains Mono';hudCtx.fillStyle='rgba(74,158,255,0.85)';hudCtx.fillText(fmtC(distE)+' km',pad,hs*1.5+hv);
+
+  hudCtx.textAlign='right';hudCtx.fillStyle='rgba(249,115,22,0.6)';hudCtx.font=hs+'px JetBrains Mono';hudCtx.fillText('MOON',w-pad,hs*1.5);
+  hudCtx.font='bold '+hv+'px JetBrains Mono';hudCtx.fillStyle='rgba(249,115,22,0.85)';hudCtx.fillText(fmtC(distM)+' km',w-pad,hs*1.5+hv);
+
+  hudCtx.textAlign='center';hudCtx.fillStyle='rgba(34,197,94,0.5)';hudCtx.font=hs+'px JetBrains Mono';hudCtx.fillText('SPEED',w/2,hs*1.5);
+  hudCtx.font='bold '+(hv-2)+'px JetBrains Mono';hudCtx.fillStyle='rgba(34,197,94,0.75)';hudCtx.fillText(fmtC(Math.abs(spdDisplay))+' km/h',w/2,hs*1.5+hv-2);
+
+  hudCtx.textAlign='left';hudCtx.fillStyle='rgba(245,158,11,0.5)';hudCtx.font=hs+'px JetBrains Mono';hudCtx.fillText('MET',pad,h-hs*.8);
+  hudCtx.font='bold '+(hs+2)+'px JetBrains Mono';hudCtx.fillStyle='rgba(245,158,11,0.8)';hudCtx.fillText(fmtShort(metH),pad+30,h-hs*.8);
+
+  var phase='';for(var mi=MILESTONES.length-1;mi>=0;mi--){if(metH>=MILESTONES[mi].h){phase=MILESTONES[mi].icon+' '+MILESTONES[mi].title;break}}
+  hudCtx.textAlign='right';hudCtx.fillStyle='rgba(255,255,255,0.6)';hudCtx.font='bold '+(hs+1)+'px Inter';hudCtx.fillText(phase,w-pad,h-hs*.8);
+
+  var vig=hudCtx.createRadialGradient(w/2,h/2,w*.25,w/2,h/2,w*.65);
+  vig.addColorStop(0,'transparent');vig.addColorStop(1,'rgba(2,5,16,0.5)');hudCtx.fillStyle=vig;hudCtx.fillRect(0,0,w,h);
+}
+
+function switchTo3DMode(){
+  mode3D=true;
+  // Show container FIRST so it has dimensions
+  document.getElementById('trajectoryCanvas').classList.add('video-active');
+  document.getElementById('threeContainer').classList.add('active');
+  hudCanvas.classList.add('active');
+  document.getElementById('btnModeCanvas').classList.remove('active');
+  document.getElementById('btnMode3D').classList.add('active');
+  resizeHudCanvas();
+  // Init Three.js AFTER container is visible
+  setTimeout(function(){
+    initThree();
+    requestAnimationFrame(render3D);
+  },50);
+}
+
+function switchToCanvasMode(){
+  mode3D=false;
+  document.getElementById('trajectoryCanvas').classList.remove('video-active');
+  document.getElementById('threeContainer').classList.remove('active');
+  hudCanvas.classList.remove('active');
+  document.getElementById('btnMode3D').classList.remove('active');
+  document.getElementById('btnModeCanvas').classList.add('active');
+}
+
+function setup3DMode(){
+  document.getElementById('btnMode3D').addEventListener('click',switchTo3DMode);
+  document.getElementById('btnModeCanvas').addEventListener('click',switchToCanvasMode);
+}
+
+window.addEventListener('resize',function(){
+  if(mode3D){
+    resizeHudCanvas();
+    if(threeRenderer){
+      var c=document.getElementById('threeContainer');var r=c.getBoundingClientRect();
+      threeRenderer.setSize(r.width,r.height);
+      threeCamera.aspect=r.width/r.height;threeCamera.updateProjectionMatrix();
+    }
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
 function init(){
-  resizeCanvas();buildTimeline();setupControls();
-  // No API calls — mission data is archived
+  resizeCanvas();buildTimeline();setupControls();setup3DMode();
   setTimeout(function(){document.getElementById('loadingOverlay').classList.add('hidden')},600);
   animMetH=0;animPlaying=true;animLastTs=0;
   requestAnimationFrame(drawFrame);
